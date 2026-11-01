@@ -1,33 +1,10 @@
-// Unpacked (Load unpacked) installs only: when the extension's files on disk change — a new build copied
-// into the loaded folder — reload the extension, so nobody has to open chrome://extensions and press ↻.
-// Store installs have an update_url and never run this.
-const UNPACKED = !('update_url' in chrome.runtime.getManifest());
-const FILES = ['manifest.json', 'content.js', 'popup.js', 'popup.html', 'background.js'];
-
-async function filesHash() {
-  const parts = await Promise.all(
-    FILES.map((f) => fetch(chrome.runtime.getURL(f), { cache: 'no-store' }).then((r) => (r.ok ? r.text() : ''))),
-  );
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(parts.join('\n')));
-  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-async function check() {
-  try {
-    const now = await filesHash();
-    const { cabinFilesHash } = await chrome.storage.local.get('cabinFilesHash');
-    if (cabinFilesHash === now) return;
-    await chrome.storage.local.set({ cabinFilesHash: now });
-    if (cabinFilesHash) chrome.runtime.reload(); // first run only remembers the files
-  } catch {
-    /* a build is being copied right now — try again on the next tick */
+// Store tabs that were already open when the extension was installed, updated or turned back on have no
+// content script (or an outdated one): put the current one in, so the button and the popup work without
+// refreshing the page.
+chrome.runtime.onInstalled.addListener(async () => {
+  const matches = chrome.runtime.getManifest().content_scripts[0].matches;
+  const tabs = await chrome.tabs.query({ url: matches });
+  for (const t of tabs) {
+    chrome.scripting.executeScript({ target: { tabId: t.id }, files: ['content.js'] }).catch(() => {});
   }
-}
-
-if (UNPACKED) {
-  chrome.alarms.create('cabin-files', { periodInMinutes: 0.5 });
-  chrome.alarms.onAlarm.addListener((a) => {
-    if (a.name === 'cabin-files') check();
-  });
-  check();
-}
+});

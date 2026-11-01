@@ -90,7 +90,17 @@ function toPage(type) {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       const id = tabs && tabs[0] && tabs[0].id;
       if (!id) return resolve(null);
-      chrome.tabs.sendMessage(id, { type }, (res) => resolve(chrome.runtime.lastError ? null : res));
+      const send = (retry) =>
+        chrome.tabs.sendMessage(id, { type }, (res) => {
+          if (!chrome.runtime.lastError) return resolve(res);
+          if (!retry) return resolve(null);
+          // No content script in this tab yet (opened before the extension was installed or updated): add it.
+          chrome.scripting
+            .executeScript({ target: { tabId: id }, files: ['content.js'] })
+            .then(() => setTimeout(() => send(false), 1200))
+            .catch(() => resolve(null));
+        });
+      send(true);
     });
   });
 }

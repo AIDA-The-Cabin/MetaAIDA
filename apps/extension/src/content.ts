@@ -31,6 +31,8 @@ function tryInject(): boolean {
   if (injected) return true;
   const product = detectProduct();
   if (!product || !product.addToCart) return false;
+  // A button left by an earlier copy of this script (the extension was updated while the tab was open).
+  document.querySelectorAll('[data-cabin="tryon-button"]').forEach((e) => e.remove());
   ensureCabin().attachButton(
     product.actions,
     { garmentImageUrl: product.garmentImageUrl, pageUrl: location.href, name: product.name, imageEl: product.productImage },

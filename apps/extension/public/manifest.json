@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "The Cabin — Virtual Try-On",
-  "version": "0.5.2",
+  "version": "0.5.4",
   "description": "See clothes on your own body, on any fashion site.",
   "icons": { "16": "icons/icon-16.png", "32": "icons/icon-32.png", "48": "icons/icon-48.png", "128": "icons/icon-128.png" },
   "action": {
@@ -9,7 +9,7 @@
     "default_title": "The Cabin",
     "default_icon": { "16": "icons/icon-16.png", "32": "icons/icon-32.png" }
   },
-  "permissions": ["storage", "alarms"],
+  "permissions": ["storage", "scripting"],
   "background": { "service_worker": "background.js" },
   "content_scripts": [
     {
@@ -18,5 +18,5 @@
       "run_at": "document_idle"
     }
   ],
-  "host_permissions": ["*://*.fashiondays.ro/*", "*://*.freepeople.com/*", "https://metaaida.pages.dev/*"]
+  "host_permissions": ["*://*.fashiondays.ro/*", "*://*.freepeople.com/*", "*://localhost/*", "*://127.0.0.1/*", "https://metaaida.pages.dev/*"]
 }
