@@ -38,6 +38,18 @@ function firstSrcsetUrl(srcset: string | null): string | undefined {
   return srcset.split(',')[0]?.trim().split(/\s+/)[0];
 }
 
+/**
+ * Keep the page layout: the try-on fills the original image's frame, cropped like a cover photo
+ * (Muse Image makes 1:1, 2:3 or 3:2 images, the page's frame can be anything in between).
+ */
+function lockFrame(img: HTMLImageElement): void {
+  if (img.dataset.cabinFrame) return;
+  const r = img.getBoundingClientRect();
+  if (r.width > 0 && r.height > 0) img.style.aspectRatio = `${Math.round(r.width)} / ${Math.round(r.height)}`;
+  img.style.objectFit = 'cover';
+  img.dataset.cabinFrame = '1';
+}
+
 function fixImg(img: HTMLImageElement): void {
   // What original photo is this <img> currently showing? (src, the picked srcset, or its srcset attr)
   const our =
@@ -45,6 +57,7 @@ function fixImg(img: HTMLImageElement): void {
     ourFor(img.currentSrc) ||
     ourFor(firstSrcsetUrl(img.getAttribute('srcset')));
   if (!our) return; // not one of ours, or already swapped (our URLs don't map back)
+  lockFrame(img);
   if (img.hasAttribute('srcset')) img.setAttribute('srcset', ''); // let our src win over srcset
   if (img.src !== our) img.src = our;
   const pic = img.closest('picture');

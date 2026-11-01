@@ -1,5 +1,5 @@
 // Whole-page conversion: every large content photo on the page (campaign images, product tiles), once per
-// photo. Each photo gets ONE deterministic URL — the srcset candidate closest to 1200 px wide — so the same
+// photo. Each photo gets ONE deterministic URL — the srcset candidate closest to 900 px wide — so the same
 // photo maps to the same cached try-on on every visit, whatever size the page happened to load.
 import { photoId } from './replace';
 
@@ -11,7 +11,7 @@ export interface PagePhoto {
 }
 
 const MIN_SIDE = 180;
-const TARGET_W = 1200;
+const TARGET_W = 900; // plenty for Muse Image (~1024 px out) and light on the server
 // Not aria-hidden: stores mark visible product pictures aria-hidden (decorative for screen readers);
 // hidden menus are dropped by size anyway.
 const SKIP_INSIDE =

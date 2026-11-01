@@ -7,7 +7,7 @@
 // Built once per product photo and kept in R2. Photos with no person in them (flat lays, packshots) are
 // marked as such; their try-on is done on the customer's own photo instead.
 // ============================================================================
-import { PhotonImage } from '@cf-wasm/photon';
+import { PhotonImage, crop, watermark } from '@cf-wasm/photon';
 import type { DB } from './db/client';
 import * as schema from './db/schema';
 import type { Env } from './env';
@@ -29,12 +29,40 @@ export function sceneKey(tenantId: string, imageHash: string): string {
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
+/** Mean colour of the thin strips just left and right of a box (the backdrop around the head). */
+function backdropColour(img: PhotonImage, x1: number, x2: number, y1: number, y2: number): [number, number, number] {
+  const W = img.get_width();
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  let n = 0;
+  for (const [sx1, sx2] of [
+    [Math.max(0, x1 - 8), Math.max(0, x1 - 2)],
+    [Math.min(W, x2 + 2), Math.min(W, x2 + 8)],
+  ]) {
+    if (sx2 - sx1 < 1) continue;
+    const strip = crop(img, sx1, y1, sx2, y2 + 1);
+    try {
+      const px = strip.get_raw_pixels();
+      for (let i = 0; i < px.length; i += 4) {
+        r += px[i];
+        g += px[i + 1];
+        b += px[i + 2];
+        n++;
+      }
+    } finally {
+      strip.free();
+    }
+  }
+  return n ? [Math.round(r / n), Math.round(g / n), Math.round(b / n)] : [200, 200, 200];
+}
+
+// Only the small strips and the patch cross into JS; the photo itself stays inside photon (Worker CPU).
 function maskHeads(bytes: Uint8Array, heads: Box[], faces: Box[]): Uint8Array {
   const img = PhotonImage.new_from_byteslice(bytes);
   try {
     const W = img.get_width();
     const H = img.get_height();
-    const px = img.get_raw_pixels();
     for (const h of heads) {
       const hw = h.x2 - h.x1;
       const hh = h.y2 - h.y1;
@@ -48,39 +76,25 @@ function maskHeads(bytes: Uint8Array, heads: Box[], faces: Box[]): Uint8Array {
       const x2 = clamp(Math.round(h.x2 + hw * 0.08), 0, W - 1);
       const y1 = clamp(Math.round(h.y1 - hh * 0.08), 0, H - 1);
       const y2 = clamp(Math.round(f ? f.y2 + hh * 0.03 : h.y1 + hh * 0.85), 0, H - 1);
-      // Fill colour = the backdrop just left and right of the box.
-      let r = 0;
-      let g = 0;
-      let b = 0;
-      let n = 0;
-      for (let y = y1; y <= y2; y++) {
-        for (const x of [clamp(x1 - 6, 0, W - 1), clamp(x2 + 6, 0, W - 1)]) {
-          const i = (y * W + x) * 4;
-          r += px[i];
-          g += px[i + 1];
-          b += px[i + 2];
-          n++;
-        }
+      // Fill = the backdrop just left and right of the box, pasted over the head as one opaque patch.
+      const [r, g, b] = backdropColour(img, x1, x2, y1, y2);
+      const bw = x2 - x1 + 1;
+      const bh = y2 - y1 + 1;
+      const fill = new Uint8Array(bw * bh * 4);
+      for (let i = 0; i < fill.length; i += 4) {
+        fill[i] = r;
+        fill[i + 1] = g;
+        fill[i + 2] = b;
+        fill[i + 3] = 255;
       }
-      r = Math.round(r / n);
-      g = Math.round(g / n);
-      b = Math.round(b / n);
-      for (let y = y1; y <= y2; y++) {
-        for (let x = x1; x <= x2; x++) {
-          const i = (y * W + x) * 4;
-          px[i] = r;
-          px[i + 1] = g;
-          px[i + 2] = b;
-          px[i + 3] = 255;
-        }
+      const patch = new PhotonImage(fill, bw, bh);
+      try {
+        watermark(img, patch, BigInt(x1), BigInt(y1));
+      } finally {
+        patch.free();
       }
     }
-    const out = new PhotonImage(px, W, H);
-    try {
-      return out.get_bytes_jpeg(92);
-    } finally {
-      out.free();
-    }
+    return img.get_bytes_jpeg(90);
   } finally {
     img.free();
   }

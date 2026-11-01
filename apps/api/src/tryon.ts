@@ -15,7 +15,7 @@ import {
 } from './meta';
 import { faceCloseup } from './avatar';
 import { storeScene } from './scene';
-import { chargeCredit, refundCredit } from './credits';
+import { chargeCredit, getCredits } from './credits';
 import { activeProfile, type ProfileRow } from './profiles';
 import { PhotonImage } from '@cf-wasm/photon';
 
@@ -192,8 +192,9 @@ export async function runTryon(
   const face = scene.masked ? await faceCloseup(env, db, ctx.tenantId, profile) : null;
   const endUser = (await sha256Hex(`end-user:${ctx.userId}`)).slice(0, 32);
 
-  // 1 credit per new generation (cache hits above are free). Refunded if it never produces an image.
-  if (!(await chargeCredit(db, ctx.userId))) throw new TryonError('no_credits', 'Out of credits.');
+  // 1 credit per new generation (cache hits above are free), taken once the image exists — a request that
+  // dies half-way (a timeout, a Worker limit) never costs a credit.
+  if ((await getCredits(db, ctx.userId)) <= 0) throw new TryonError('no_credits', 'Out of credits.');
 
   // Muse Image: one synchronous call returns the finished image (~15–35 s in the store's scene).
   let gen: Awaited<ReturnType<typeof metaTryon>>;
@@ -202,10 +203,10 @@ export async function runTryon(
       ? await metaSceneTryon(env, bodyB64, face, scene.masked, endUser)
       : await metaTryon(env, bodyB64, garmentB64, endUser);
   } catch (e) {
-    await refundCredit(db, ctx.userId);
     if (e instanceof MetaBlockedError) throw new TryonError('content_blocked', e.message);
     throw e;
   }
+  await chargeCredit(db, ctx.userId); // false only if parallel requests took the last credit meanwhile
   const webp = gen.contentType.includes('webp') ? gen.bytes : toWebp(gen.bytes);
   const resultKey = `results/${ctx.tenantId}/${ctx.userId}/${garment.imageHash}/${profile.bodyVersion}-${variant}.webp`;
   await env.BUCKET.put(resultKey, webp, { httpMetadata: { contentType: 'image/webp' } });

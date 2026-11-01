@@ -12,9 +12,8 @@
 // One synchronous call returns the finished image (WebP). $0.01 per generated image; failed or
 // safety-filtered images are not billed. Docs: https://dev.meta.ai/docs/image-generation
 // ============================================================================
-import { PhotonImage } from '@cf-wasm/photon';
 import type { Env } from './env';
-import { sleep } from './util';
+import { imageSize, sleep } from './util';
 
 const META_BASE = 'https://api.meta.ai/v1';
 export const META_IMAGE_MODEL = 'muse-image-1.0';
@@ -64,20 +63,36 @@ function b64ToBytes(b64: string): Uint8Array {
   return out;
 }
 
-/** "WxH" with the aspect ratio of the image in `dataUri`, ~1024px wide (Muse Image keeps only the ratio). */
-function sizeLike(dataUri: string): string | undefined {
+/** Width and height of the image in a data URI, read from its header (no decoding). */
+function dims(dataUri: string): { w: number; h: number } | null {
   try {
-    const img = PhotonImage.new_from_byteslice(b64ToBytes(dataUri.slice(dataUri.indexOf(',') + 1)));
-    try {
-      const w = img.get_width();
-      const h = img.get_height();
-      return w && h ? `1024x${Math.round((1024 * h) / w)}` : undefined;
-    } finally {
-      img.free();
-    }
+    const d = imageSize(b64ToBytes(dataUri.slice(dataUri.indexOf(',') + 1)));
+    return d && d.w && d.h ? d : null;
   } catch {
-    return undefined; // unreadable → let the API use its default
+    return null;
   }
+}
+
+/** /images/edits: "WxH" with the image's own aspect ratio, ~1024px wide (Muse Image keeps only the ratio). */
+function sizeLike(dataUri: string): string | undefined {
+  const d = dims(dataUri);
+  return d ? `1024x${Math.round((1024 * d.h) / d.w)}` : undefined; // unreadable → the API's default
+}
+
+/**
+ * /responses image_generation tool: only these sizes are accepted (any other "WxH" is a 400), so take the one
+ * closest to the image's aspect ratio. The page shows the result in the original frame (object-fit: cover).
+ */
+const TOOL_SIZES = [
+  { size: '1024x1024', ratio: 1 },
+  { size: '1024x1536', ratio: 2 / 3 },
+  { size: '1536x1024', ratio: 3 / 2 },
+];
+function toolSizeLike(dataUri: string): string | undefined {
+  const d = dims(dataUri);
+  if (!d) return undefined;
+  const r = Math.log(d.w / d.h);
+  return TOOL_SIZES.reduce((a, b) => (Math.abs(Math.log(b.ratio) - r) < Math.abs(Math.log(a.ratio) - r) ? b : a)).size;
 }
 
 /** POST to the Meta Model API and pull the image out. Retries 429 / 5xx / network; other 4xx are fatal. */
@@ -160,7 +175,7 @@ export async function metaSceneTryon(
     { type: 'input_text', text: sceneTask(!!faceDataUri) },
   );
   const tool: Record<string, unknown> = { type: 'image_generation', output_format: 'webp', ...TOOLS_OFF };
-  const size = sizeLike(maskedSceneDataUri);
+  const size = toolSizeLike(maskedSceneDataUri);
   if (size) tool.size = size;
   const body = {
     model: META_IMAGE_MODEL,
