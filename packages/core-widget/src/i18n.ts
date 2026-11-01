@@ -20,6 +20,13 @@ export const strings = {
     profile: 'Profile',
     manage: 'Manage profiles ↗',
     addPhoto: 'Add a photo ↗',
+    pageConverting: 'Converting this page',
+    pageDone: 'Page converted',
+    photos: 'photos',
+    skipped: 'skipped',
+    failed: 'failed',
+    outOfCredits: 'Out of credits',
+    close: 'Close',
   },
   ro: {
     brand: 'Cabina',
@@ -36,6 +43,13 @@ export const strings = {
     profile: 'Profil',
     manage: 'Gestionează profilurile ↗',
     addPhoto: 'Adaugă o poză ↗',
+    pageConverting: 'Convertesc pagina',
+    pageDone: 'Pagină convertită',
+    photos: 'poze',
+    skipped: 'sărite',
+    failed: 'eșuate',
+    outOfCredits: 'Credite epuizate',
+    close: 'Închide',
   },
 } as const;
 

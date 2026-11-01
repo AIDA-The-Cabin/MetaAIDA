@@ -1,11 +1,81 @@
 import { CabinApi } from './api';
 import { mountShadow } from './mount';
 import { createCabinButton, setButtonLoading, setButtonDone, setButtonError } from './button';
-import { cabinItems, panelOpen, profiles, activeProfileId } from './state';
+import { cabinItems, panelOpen, profiles, activeProfileId, pageProgress, type PageProgress } from './state';
 import { lang, t } from './i18n';
 import { detectGallery } from './detect';
 import { registerReplacement, startReplacementObserver, photoId } from './replace';
-import type { CabinItem } from '@aida/shared';
+import { collectPageImages } from './collect';
+import type { CabinItem, ConvertPlan } from '@aida/shared';
+
+/** Whole-page conversion: at most this many photos generating at once (Muse Image allows 150 a minute). */
+const PAGE_CONCURRENCY = 6;
+
+const sleep = (ms: number) => new Promise((r) => window.setTimeout(r, ms));
+
+/** Scroll through the page once so lazy-loaded photos get their URLs, then go back to where the customer was. */
+async function revealLazyPhotos(): Promise<void> {
+  const start = window.scrollY;
+  const step = Math.max(300, Math.round(window.innerHeight * 0.8));
+  for (let y = 0; y < document.documentElement.scrollHeight; y += step) {
+    window.scrollTo({ top: y, behavior: 'instant' as ScrollBehavior });
+    await sleep(300);
+  }
+  await sleep(600);
+  window.scrollTo({ top: start, behavior: 'instant' as ScrollBehavior });
+}
+
+/** Cached try-ons for these photos (cache-only, free), in batches of 40 (the API's limit). */
+async function lookupAll(api: CabinApi, urls: string[]): Promise<Array<{ garmentImageUrl: string; resultUrl: string }>> {
+  const out: Array<{ garmentImageUrl: string; resultUrl: string }> = [];
+  for (let i = 0; i < urls.length; i += 40) out.push(...(await api.lookup(urls.slice(i, i + 40))));
+  return out;
+}
+
+/** Dry run for every large photo on the page: what is cached, what would be generated and its cost (no AI calls). */
+export async function planPage(apiBase: string): Promise<ConvertPlan> {
+  const api = new CabinApi(apiBase);
+  const urls = collectPageImages().map((p) => p.url);
+  const plan: ConvertPlan = { items: [], estimateUsd: 0 };
+  for (let i = 0; i < urls.length; i += 40) {
+    const part = await api.plan(urls.slice(i, i + 40));
+    plan.items.push(...part.items);
+    plan.estimateUsd += part.estimateUsd;
+  }
+  plan.estimateUsd = Math.round(plan.estimateUsd * 10000) / 10000;
+  return plan;
+}
+
+/**
+ * Any page, no UI: show the try-ons this customer already has for the page's photos (cache-only, free), and
+ * keep doing it as the page lazy-loads more photos. Returns a stop function.
+ */
+export function watchPageImages(apiBase: string): () => void {
+  const api = new CabinApi(apiBase);
+  const seen = new Set<string>();
+  let timer = 0;
+  const run = async () => {
+    const fresh = collectPageImages().filter((p) => !seen.has(p.id));
+    if (!fresh.length) return;
+    fresh.forEach((p) => seen.add(p.id));
+    const hits = await lookupAll(api, fresh.map((p) => p.url)).catch(() => []);
+    for (const h of hits) {
+      const u = api.imageUrl(h.resultUrl);
+      if (u) registerReplacement(h.garmentImageUrl, u);
+    }
+    if (hits.length) startReplacementObserver();
+  };
+  const obs = new MutationObserver(() => {
+    window.clearTimeout(timer);
+    timer = window.setTimeout(run, 800);
+  });
+  obs.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['src', 'srcset', 'class'] });
+  void run();
+  return () => {
+    obs.disconnect();
+    window.clearTimeout(timer);
+  };
+}
 
 export interface CabinMountConfig {
   apiBase: string;
@@ -34,6 +104,8 @@ export interface CabinController {
   closePanel(): void;
   refreshCabin(): Promise<void>;
   bakePage(targets: { el: HTMLImageElement; product: CabinProductRef }[]): void;
+  /** Put the customer into every large photo on the page that shows one person (cached ones first, free). */
+  convertPage(): Promise<void>;
 }
 
 export function mountCabin(cfg: CabinMountConfig): CabinController {
@@ -200,6 +272,55 @@ export function mountCabin(cfg: CabinMountConfig): CabinController {
       );
       for (const tg of targets) io.observe(tg.el);
     },
+
+    async convertPage() {
+      if (pageProgress.value?.running) return;
+      const p: PageProgress = { total: 0, done: 0, skipped: 0, failed: 0, running: true };
+      const show = () => (pageProgress.value = { ...p });
+      show();
+      startReplacementObserver();
+      await revealLazyPhotos();
+
+      const queued = new Set<string>();
+      const batchId = 'page_' + Math.random().toString(36).slice(2);
+      // A few rounds: photos that only appear while converting (lazy loading, carousels) join the next round.
+      for (let round = 0; round < 3 && !p.stopped; round++) {
+        const photos = collectPageImages().filter((x) => !queued.has(x.id));
+        if (!photos.length) break;
+        photos.forEach((x) => queued.add(x.id));
+        p.total += photos.length;
+        show();
+
+        const hits = await lookupAll(api, photos.map((x) => x.url)).catch(() => []);
+        for (const h of hits) applyOur(h.garmentImageUrl, h.resultUrl);
+        const cached = new Set(hits.map((h) => h.garmentImageUrl));
+        p.done += cached.size;
+        show();
+
+        const todo = photos.filter((x) => !cached.has(x.url));
+        let next = 0;
+        const worker = async () => {
+          while (next < todo.length && !p.stopped) {
+            const photo = todo[next++];
+            try {
+              const r = await api.tryon(photo.url, location.href, batchId, { sceneOnly: true });
+              if (r.status === 'done') {
+                applyOur(photo.url, r.resultUrl);
+                p.done++;
+              } else if (r.status === 'skipped') p.skipped++;
+              else p.failed++;
+            } catch (e) {
+              p.failed++;
+              if (/credit/i.test((e as Error).message)) p.stopped = 'credits';
+            }
+            show();
+          }
+        };
+        await Promise.all(Array.from({ length: Math.min(PAGE_CONCURRENCY, todo.length) }, worker));
+      }
+      p.running = false;
+      show();
+    },
   };
 
   void ctrl.refreshCabin();
@@ -209,3 +330,4 @@ export function mountCabin(cfg: CabinMountConfig): CabinController {
 
 export { CabinApi };
 export { detectProductOG, type DetectedProduct } from './detect';
+export { collectPageImages, type PagePhoto } from './collect';

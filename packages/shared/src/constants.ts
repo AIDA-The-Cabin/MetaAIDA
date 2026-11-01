@@ -24,4 +24,5 @@ export const ROUTES = {
   images: (key: string) => `/${API_VERSION}/images/${key}`,
   sdkBootstrap: `/${API_VERSION}/sdk/bootstrap`,
   adminUsage: `/${API_VERSION}/admin/usage`,
+  convertPlan: `/${API_VERSION}/convert/plan`,
 } as const;

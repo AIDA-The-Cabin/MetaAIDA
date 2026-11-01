@@ -1,6 +1,6 @@
 import type { ButtonMode } from './constants';
 
-export type TryonStatus = 'queued' | 'processing' | 'done' | 'failed';
+export type TryonStatus = 'queued' | 'processing' | 'done' | 'failed' | 'skipped';
 
 export interface TryonResult {
   id: string;
@@ -9,6 +9,21 @@ export interface TryonResult {
   cached: boolean;
   latencyMs?: number;
   error?: string;
+  /** Why a whole-page conversion left this photo alone: no person in it, or more than one. */
+  skipped?: 'no_person' | 'group';
+}
+
+/** One photo in a whole-page conversion dry run. */
+export interface ConvertPlanItem {
+  url: string;
+  /** cached = already converted · ready = person found, will generate · new = not analysed yet · skip = no single person · unreachable = can't fetch */
+  state: 'cached' | 'ready' | 'new' | 'skip' | 'unreachable';
+}
+
+export interface ConvertPlan {
+  items: ConvertPlanItem[];
+  /** Upper bound in USD for converting everything not cached yet (SAM analysis + Muse Image). */
+  estimateUsd: number;
 }
 
 export interface CabinItem {

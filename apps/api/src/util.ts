@@ -24,19 +24,35 @@ export function dataUri(buf: ArrayBuffer, mime = 'image/jpeg'): string {
   return `data:${mime};base64,${abToBase64(buf)}`;
 }
 
-/** Fetch a (possibly hotlink-protected) image server-side and return a base64 data URI. */
-export async function fetchImageAsDataUri(url: string): Promise<string> {
+function imageFetch(url: string): Promise<Response> {
   let referer = '/';
   try {
     referer = new URL(url).origin + '/';
   } catch {
     /* ignore */
   }
-  const res = await fetch(url, { headers: { 'User-Agent': UA, Referer: referer } });
+  return fetch(url, { headers: { 'User-Agent': UA, Referer: referer } });
+}
+
+/** Fetch a (possibly hotlink-protected) image server-side and return a base64 data URI. */
+export async function fetchImageAsDataUri(url: string): Promise<string> {
+  const res = await imageFetch(url);
   if (!res.ok) throw new Error(`garment fetch failed: ${res.status}`);
   const ct = res.headers.get('content-type') || 'image/jpeg';
   const mime = ct.startsWith('image/') ? ct.split(';')[0] : 'image/jpeg';
   return dataUri(await res.arrayBuffer(), mime);
+}
+
+/** Does the store's CDN serve this image to us? (status + content type only; the body is not read) */
+export async function imageReachable(url: string): Promise<boolean> {
+  try {
+    const res = await imageFetch(url);
+    const ok = res.ok && (res.headers.get('content-type') ?? '').startsWith('image/');
+    await res.body?.cancel();
+    return ok;
+  } catch {
+    return false;
+  }
 }
 
 export function encodeKey(key: string): string {

@@ -110,12 +110,12 @@ type GarmentRow = typeof schema.garments.$inferSelect;
 type ResultRow = typeof schema.tryonResults.$inferSelect;
 
 /** One cached try-on per (user, photo version, garment, variant). Photo versions are unique per account. */
-function cacheKeyFor(userId: string, bodyVersion: number, garmentId: string, variant: string): Promise<string> {
+export function cacheKeyFor(userId: string, bodyVersion: number, garmentId: string, variant: string): Promise<string> {
   return sha256Hex(`${userId}:${bodyVersion}:${garmentId}:${variant}`);
 }
 
 /** Newest first: a try-on in the store's scene beats one on the customer's own photo. */
-const VARIANTS = [META_SCENE_VARIANT, META_VARIANT];
+export const VARIANTS = [META_SCENE_VARIANT, META_VARIANT];
 
 /** Load the profile's current body photo + the garment image as data URIs (for Muse Image). */
 async function prepareInputs(
@@ -154,6 +154,7 @@ export async function runTryon(
   productRef?: string,
   category?: string,
   batchId?: string,
+  sceneOnly = false,
 ): Promise<TryonOutcome> {
   const profile = await activeProfile(db, ctx.userId);
   if (!profile.primaryPhotoId) throw new TryonError('no_body_photo', 'Upload a body photo first.');
@@ -175,6 +176,14 @@ export async function runTryon(
 
   // The store's scene needs a person in the product photo; flat lays are dressed on the customer's own photo.
   const scene = await storeScene(env, db, ctx, garment, garmentB64);
+  // Whole-page conversion: only photos with exactly one person, nothing is charged for the rest.
+  if (sceneOnly && (!scene.masked || scene.people !== 1)) {
+    return {
+      garmentId: garment.id,
+      profileId: profile.id,
+      result: { id: '', status: 'skipped', cached: false, skipped: scene.masked ? 'group' : 'no_person' },
+    };
+  }
   const variant = scene.masked ? META_SCENE_VARIANT : META_VARIANT;
   if (!scene.masked) {
     ({ cacheKey, row: cached } = await hitFor(META_VARIANT));

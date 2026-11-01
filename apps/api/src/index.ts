@@ -8,6 +8,7 @@ import {
   tryonRequestSchema,
   cabinAddSchema,
   lookupSchema,
+  convertPlanSchema,
   profileUpdateSchema,
   profileCreateSchema,
   consentSchema,
@@ -18,6 +19,7 @@ import type { Env } from './env';
 import { stubAuth, tenantFromApiKey } from './auth';
 import { getCredits } from './credits';
 import { runTryon, imageUrl, TryonError, getTryonById, lookupResults } from './tryon';
+import { planConversion } from './convert';
 import { activeProfile, createProfile, listProfiles, nextBodyVersion, profileSummary, setActiveProfile } from './profiles';
 import { avatarKey, buildAvatar, closeupKey } from './avatar';
 import { seed } from './seed';
@@ -211,7 +213,17 @@ app.post(ROUTES.tryon, async (c) => {
     return c.json({ error: 'bad_request', detail: String(e) }, 400);
   }
   try {
-    const out = await runTryon(c.env, db, ctx, body.garmentImageUrl, body.pageUrl, body.productRef, body.category, body.batchId);
+    const out = await runTryon(
+      c.env,
+      db,
+      ctx,
+      body.garmentImageUrl,
+      body.pageUrl,
+      body.productRef,
+      body.category,
+      body.batchId,
+      body.sceneOnly,
+    );
     return c.json(out.result);
   } catch (e) {
     if (e instanceof TryonError) return c.json({ error: e.code, detail: e.message }, 400);
@@ -225,6 +237,19 @@ app.get('/v1/tryon/:id', async (c) => {
   const r = await getTryonById(db, c.req.param('id'));
   if (!r) return c.json({ error: 'not_found' }, 404);
   return c.json(r);
+});
+
+// Whole-page conversion dry run: cached / ready / new / skip / unreachable per photo + cost estimate (no AI calls).
+app.post(ROUTES.convertPlan, async (c) => {
+  const ctx = stubAuth();
+  const db = getDb(c.env.DB);
+  let body;
+  try {
+    body = convertPlanSchema.parse(await c.req.json());
+  } catch (e) {
+    return c.json({ error: 'bad_request', detail: String(e) }, 400);
+  }
+  return c.json(await planConversion(c.env, db, ctx, body.imageUrls));
 });
 
 // Cache-only: which of these page images already have a try-on (re-applied on load, never generates).

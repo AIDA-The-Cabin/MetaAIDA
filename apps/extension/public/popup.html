@@ -32,6 +32,11 @@
       .brandrow { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
       .brandrow .s { margin-bottom: 0; }
       .logo { width: 36px; height: 36px; flex: none; }
+      .pagebtns { display: flex; gap: 8px; }
+      .pbtn { flex: 1; height: 36px; border-radius: 10px; border: 1px solid #2A2E35; background: #131519; color: #F4F2ED; font: inherit; font-size: 13px; cursor: pointer; }
+      .pbtn:hover { border-color: #9C7A2E; }
+      .pbtn.gold { background: linear-gradient(180deg,#E7C977,#C9A24B); color: #0B0C0E; border-color: #9C7A2E; font-weight: 600; }
+      .pbtn:disabled { opacity: .5; cursor: default; }
     </style>
   </head>
   <body>
@@ -56,6 +61,13 @@
     <p class="cap" style="margin-top: 16px;">Scope</p>
     <div class="opt" data-scope="image"><span class="dot"></span><span class="nm">Individual</span><span class="meta">this image</span></div>
     <div class="opt" data-scope="page"><span class="dot"></span><span class="nm">Perpetual</span><span class="meta">all photos</span></div>
+
+    <p class="cap" style="margin-top: 16px;">This page</p>
+    <div class="pagebtns">
+      <button class="pbtn" id="plan">Check</button>
+      <button class="pbtn gold" id="convert">Convert all photos</button>
+    </div>
+    <p class="hint" id="pageinfo" style="margin-top: 8px;">Puts you into every photo with one person in it. Check first: it shows the count and the cost, without generating anything.</p>
 
     <p class="hint">Turn off to check whether a page problem is caused by the extension. Reload the page after changing settings.</p>
     <script src="popup.js"></script>

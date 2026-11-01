@@ -1,4 +1,4 @@
-import type { CabinItem, ProfilesResponse, TryonResult } from '@aida/shared';
+import type { CabinItem, ConvertPlan, ProfilesResponse, TryonResult } from '@aida/shared';
 
 export class CabinApi {
   constructor(private base: string) {}
@@ -13,11 +13,12 @@ export class CabinApi {
     return u.startsWith('http') ? u : this.url(u);
   }
 
-  async tryon(garmentImageUrl: string, pageUrl: string, batchId?: string): Promise<TryonResult> {
+  /** `sceneOnly`: whole-page conversion — photos without exactly one person come back `skipped`, free. */
+  async tryon(garmentImageUrl: string, pageUrl: string, batchId?: string, opts: { sceneOnly?: boolean } = {}): Promise<TryonResult> {
     const r = await fetch(this.url('/v1/tryon'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ garmentImageUrl, pageUrl, batchId }),
+      body: JSON.stringify({ garmentImageUrl, pageUrl, batchId, sceneOnly: opts.sceneOnly || undefined }),
     });
     const j = (await r.json()) as TryonResult & { error?: string; detail?: string };
     if (!r.ok) throw new Error(j.detail || j.error || 'try-on failed');
@@ -45,6 +46,17 @@ export class CabinApi {
     if (!r.ok) return [];
     const j = (await r.json()) as { results?: Array<{ garmentImageUrl: string; resultUrl: string }> };
     return j.results ?? [];
+  }
+
+  /** Whole-page conversion dry run for up to 40 photos (no AI calls). */
+  async plan(imageUrls: string[]): Promise<ConvertPlan> {
+    const r = await fetch(this.url('/v1/convert/plan'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageUrls }),
+    });
+    if (!r.ok) throw new Error('plan failed');
+    return (await r.json()) as ConvertPlan;
   }
 
   async listCabin(): Promise<CabinItem[]> {

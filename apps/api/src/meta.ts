@@ -41,8 +41,9 @@ const sceneTask = (withCloseup: boolean) =>
   'colour, length, neckline and every detail), the same shoes, the same pose, the same camera framing, the same ' +
   'background and the same lighting - worn by the customer from image A: their head, face and hair exactly as in ' +
   `image A${withCloseup ? ' and A2' : ''}, their skin tone on the arms, hands and legs, and their own body build and ` +
-  'proportions (the garment fits their real body). Natural neck and shoulders, seamless result. No grey box, no ' +
-  'text, no watermark.';
+  'proportions (the garment fits their real body). Natural neck and shoulders, seamless result, no grey box. Keep ' +
+  'any text, logo or graphic that is part of image B exactly as it is (same words, font, size, colour, position ' +
+  'and layering) and add no new text or watermark.';
 
 // Muse Image searches the web and runs code on its own by default; a try-on needs neither.
 const TOOLS_OFF = { enable_image_search: false, enable_web_search: false, enable_shell: false };

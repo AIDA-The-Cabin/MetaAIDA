@@ -19,6 +19,8 @@ const MIN_CONF = 0.5;
 /** `masked` = the product photo with the model's head blanked out (data URI); null = no person in the photo. */
 export interface StoreScene {
   masked: string | null;
+  /** People found in the photo (a whole-page conversion only takes photos with exactly one). */
+  people: number;
 }
 
 export function sceneKey(tenantId: string, imageHash: string): string {
@@ -99,8 +101,9 @@ export async function storeScene(
   const key = sceneKey(ctx.tenantId, garment.imageHash);
   const hit = await env.BUCKET.get(key);
   if (hit) {
-    if (hit.customMetadata?.person === '0') return { masked: null };
-    return { masked: dataUri(await hit.arrayBuffer(), 'image/jpeg') };
+    const people = Number(hit.customMetadata?.people ?? hit.customMetadata?.person ?? 0);
+    if (hit.customMetadata?.person === '0') return { masked: null, people: 0 };
+    return { masked: dataUri(await hit.arrayBuffer(), 'image/jpeg'), people };
   }
 
   const [heads, faces] = await Promise.all([samBoxes(env, garmentDataUri, 'head'), samBoxes(env, garmentDataUri, 'face')]);
@@ -119,7 +122,7 @@ export async function storeScene(
       })
       .run();
   }
-  if (!heads.billed || !faces.billed) return { masked: null };
+  if (!heads.billed || !faces.billed) return { masked: null, people: 0 };
 
   const people = heads.boxes.filter((b) => (b.c ?? 1) >= MIN_CONF);
   let jpeg: Uint8Array | null = null;
@@ -135,9 +138,12 @@ export async function storeScene(
     }
   }
   if (!jpeg) {
-    await env.BUCKET.put(key, new Uint8Array(0), { customMetadata: { person: '0' } });
-    return { masked: null };
+    await env.BUCKET.put(key, new Uint8Array(0), { customMetadata: { person: '0', people: '0' } });
+    return { masked: null, people: 0 };
   }
-  await env.BUCKET.put(key, jpeg, { httpMetadata: { contentType: 'image/jpeg' }, customMetadata: { person: '1' } });
-  return { masked: dataUri(jpeg.slice().buffer, 'image/jpeg') };
+  await env.BUCKET.put(key, jpeg, {
+    httpMetadata: { contentType: 'image/jpeg' },
+    customMetadata: { person: '1', people: String(people.length) },
+  });
+  return { masked: dataUri(jpeg.slice().buffer, 'image/jpeg'), people: people.length };
 }

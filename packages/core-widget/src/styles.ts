@@ -124,6 +124,16 @@ button{font-family:inherit}
 .cabin-who-link{align-self:flex-start;font-size:12px;color:var(--cabin-gold-300);text-decoration:none;padding:2px}
 .cabin-who-link:hover{color:var(--cabin-gold-100)}
 
+/* ---- whole-page conversion progress ---- */
+.cabin-pill{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:2147483605;
+  display:flex;align-items:center;gap:10px;max-width:calc(100vw - 32px);padding:10px 14px 10px 16px;border-radius:999px;
+  background:var(--cabin-bg-surface);border:1px solid var(--cabin-border-gold);box-shadow:0 12px 40px rgba(0,0,0,.55);
+  color:var(--cabin-text-hi);font-size:13px}
+.cabin-pill-text{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cabin-pill-extra{color:var(--cabin-text-low)}
+.cabin-pill-x{background:none;border:none;color:var(--cabin-text-low);cursor:pointer;font-size:17px;line-height:1;padding:0 2px}
+.cabin-pill-x:hover{color:var(--cabin-gold-300)}
+
 /* ---- responsive: phones -> bottom sheet ---- */
 @media (max-width:640px){
   .cabin-panel{width:100%;max-width:100%;height:84vh;top:auto;bottom:0;border-left:none;
