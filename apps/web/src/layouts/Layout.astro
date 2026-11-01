@@ -2,14 +2,56 @@
 import '../styles/global.css';
 interface Props { title?: string }
 const { title = 'The Cabin — AI virtual try-on' } = Astro.props;
+
+// Destinations still to be decided — an empty value shows the item without a link.
+const LINKS = { privacy: '', terms: '', contact: '', linkedin: '', youtube: '', instagram: '' };
+const REPO = 'https://github.com/AIDA-The-Cabin/MetaAIDA';
+const DEMO = 'https://metaaida-shop-demo.pages.dev';
+
+type Item = { key: string; text: string; href: string; ext?: boolean; download?: boolean };
+const MENUS: Record<string, { key: string; text: string; items: Item[] }> = {
+  product: {
+    key: 'nav.product', text: 'Product', items: [
+      { key: 'menu.how', text: 'How it works', href: '/#how' },
+      { key: 'menu.action', text: 'See it in action', href: '/#action' },
+      { key: 'menu.ext', text: 'Browser extension', href: '/#extension' },
+      { key: 'menu.sdk', text: 'SDK for stores', href: '/sdk' },
+    ],
+  },
+  developers: {
+    key: 'nav.dev', text: 'Developers', items: [
+      { key: 'menu.guide', text: 'Integration guide', href: '/sdk' },
+      { key: 'menu.skill', text: 'AI skill · SKILL.md', href: '/sdk/SKILL.md', ext: true },
+      { key: 'menu.demo', text: 'Live demo store ↗', href: DEMO, ext: true },
+      { key: 'menu.code', text: 'Source code ↗', href: REPO, ext: true },
+    ],
+  },
+  resources: {
+    key: 'nav.res', text: 'Resources', items: [
+      { key: 'menu.getext', text: 'Get the extension', href: '/#extension' },
+      { key: 'menu.zip', text: 'Download the ZIP', href: '/downloads/the-cabin-extension.zip', download: true },
+      { key: 'menu.profile', text: 'Create your profile', href: '/profile' },
+      { key: 'menu.why', text: 'Why The Cabin', href: '/#why' },
+    ],
+  },
+  company: {
+    key: 'nav.company', text: 'Company', items: [
+      { key: 'menu.about', text: 'About The Cabin', href: '/#why' },
+      { key: 'menu.code', text: 'Source code ↗', href: REPO, ext: true },
+    ],
+  },
+};
+const HEAD_MENUS = ['product', 'developers', 'mkt', 'resources'];
+const FOOT_MENUS = ['product', 'developers', 'mkt', 'resources', 'company'];
 ---
 
 <!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="description" content="The Cabin shows you how clothes look worn by you — AI virtual try-on." />
+    <meta name="theme-color" content="#0B0C0E" />
     <title>{title}</title>
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
@@ -21,47 +63,142 @@ const { title = 'The Cabin — AI virtual try-on' } = Astro.props;
       href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,500&family=Inter:wght@400;500;600&display=swap"
       rel="stylesheet"
     />
+    <slot name="head" />
   </head>
   <body>
-    <nav class="nav">
-      <a class="brand-link" href="/"><img class="brand-mark" src="/brand/mark-96.png" alt="" width="36" height="36" /><span class="wordmark" data-i18n="nav.brand">The Cabin</span></a>
-      <div class="nav-links">
-        <a href="/profile" class="nav-profile"><span class="nav-av" id="nav-av" style="display:none" aria-hidden="true"></span><span id="nav-name" data-i18n="nav.profile">Profile</span></a>
-        <a href="/dashboard" data-i18n="nav.dashboard">Dashboard</a>
-        <span class="lang-switch"><button data-lang="en">EN</button><span>|</span><button data-lang="ro">RO</button></span>
-      </div>
-    </nav>
+    <header class="site-head">
+      <nav class="nav" id="nav" aria-label="Main">
+        <a class="brand-link" href="/"><img class="brand-mark" src="/brand/mark-96.png" alt="" width="36" height="36" /><span class="wordmark" data-i18n="nav.brand">The Cabin</span></a>
+
+        <div class="nav-menu" id="nav-menu">
+          {HEAD_MENUS.map((id) =>
+            id === 'mkt' ? (
+              <a class="mi-link" href="/#forms"><span data-i18n="nav.mkt">Marketplace</span><span class="mi-badge" data-i18n="nav.planned">Planned</span></a>
+            ) : (
+              <div class="mi">
+                <button class="mi-trigger" type="button" aria-expanded="false"><span data-i18n={MENUS[id].key}>{MENUS[id].text}</span><svg class="chev" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" /></svg></button>
+                <div class="mi-panel">
+                  {MENUS[id].items.map((it) => (
+                    <a href={it.href} data-i18n={it.key} target={it.ext ? '_blank' : undefined} rel={it.ext ? 'noopener' : undefined} download={it.download ? 'the-cabin-extension.zip' : undefined}>{it.text}</a>
+                  ))}
+                </div>
+              </div>
+            ),
+          )}
+          <div class="nav-extra">
+            <a href="/dashboard" data-i18n="nav.dashboard">Dashboard</a>
+            <span class="lang-switch"><button data-lang="en">EN</button><span>|</span><button data-lang="ro">RO</button></span>
+          </div>
+        </div>
+
+        <div class="nav-right">
+          <a href="/profile" class="nav-profile"><span class="nav-av" id="nav-av" style="display:none" aria-hidden="true"></span><span id="nav-name" data-i18n="nav.profile">Profile</span></a>
+          <a class="nav-dash" href="/dashboard" data-i18n="nav.dashboard">Dashboard</a>
+          <span class="lang-switch nav-lang"><button data-lang="en">EN</button><span>|</span><button data-lang="ro">RO</button></span>
+          <button class="nav-burger" id="nav-burger" type="button" aria-controls="nav-menu" aria-expanded="false" aria-label="Menu">
+            <span></span><span></span><span></span>
+          </button>
+        </div>
+      </nav>
+      <div class="nav-line" aria-hidden="true"></div>
+    </header>
+
     <slot />
-    <footer class="footer" data-i18n="footer">The Cabin · AI virtual try-on · © 2026</footer>
+
+    <footer class="site-foot">
+      <div class="foot-top">
+        <a class="brand-link" href="/"><img class="brand-mark" src="/brand/mark-96.png" alt="" width="36" height="36" loading="lazy" /><span class="wordmark" data-i18n="nav.brand">The Cabin</span></a>
+        <nav class="foot-menu" aria-label="Footer">
+          {FOOT_MENUS.map((id) =>
+            id === 'mkt' ? (
+              <a class="mi-link" href="/#forms" data-i18n="nav.mkt">Marketplace</a>
+            ) : (
+              <div class="mi mi-up">
+                <button class="mi-trigger" type="button" aria-expanded="false"><span data-i18n={MENUS[id].key}>{MENUS[id].text}</span><svg class="chev" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" /></svg></button>
+                <div class="mi-panel">
+                  {MENUS[id].items.map((it) => (
+                    <a href={it.href} data-i18n={it.key} target={it.ext ? '_blank' : undefined} rel={it.ext ? 'noopener' : undefined} download={it.download ? 'the-cabin-extension.zip' : undefined}>{it.text}</a>
+                  ))}
+                </div>
+              </div>
+            ),
+          )}
+        </nav>
+        <div class="socials">
+          {[
+            ['linkedin', 'LinkedIn', '<path d="M6.5 9.5v8M6.5 6.2v.1M10.5 17.5v-4.6c0-1.9 1.2-3.1 2.8-3.1s2.7 1.1 2.7 3.1v4.6M10.5 9.5v8" />'],
+            ['youtube', 'YouTube', '<rect x="3" y="6" width="18" height="12" rx="3.5" /><path d="m10.3 9.4 4.4 2.6-4.4 2.6z" fill="currentColor" stroke="none" />'],
+            ['instagram', 'Instagram', '<rect x="4" y="4" width="16" height="16" rx="4.5" /><circle cx="12" cy="12" r="3.6" /><path d="M16.9 7.1v.1" />'],
+          ].map(([id, label, path]) => {
+            const href = LINKS[id as keyof typeof LINKS];
+            const svg = `<svg viewBox="0 0 24 24" aria-hidden="true">${path}</svg>`;
+            return href ? <a class="soc" href={href} target="_blank" rel="noopener" aria-label={label} set:html={svg} /> : <span class="soc soc-off" title={label} set:html={svg} />;
+          })}
+        </div>
+      </div>
+      <div class="foot-bottom">
+        <p class="foot-tag" data-i18n="foot.tag">AI virtual try-on for the real you.</p>
+        <p class="foot-copy" data-i18n="footer">The Cabin · AI virtual try-on · © 2026</p>
+        <p class="foot-legal">
+          {[
+            ['privacy', 'foot.privacy', 'Privacy'],
+            ['terms', 'foot.terms', 'Terms'],
+            ['contact', 'foot.contact', 'Contact'],
+          ].map(([id, key, text]) => {
+            const href = LINKS[id as keyof typeof LINKS];
+            return href ? <a href={href} data-i18n={key}>{text}</a> : <span data-i18n={key}>{text}</span>;
+          })}
+        </p>
+      </div>
+    </footer>
 
     <script is:inline>
       (function () {
         const RO = {
           'nav.brand': 'Cabina', 'nav.profile': 'Profil', 'nav.dashboard': 'Panou',
+          'nav.product': 'Produs', 'nav.dev': 'Dezvoltatori', 'nav.mkt': 'Marketplace', 'nav.planned': 'În plan',
+          'nav.res': 'Resurse', 'nav.company': 'Companie',
+          'menu.how': 'Cum funcționează', 'menu.action': 'Vezi-o în acțiune', 'menu.ext': 'Extensia de browser',
+          'menu.sdk': 'SDK pentru magazine', 'menu.guide': 'Ghid de integrare', 'menu.skill': 'Skill pentru AI · SKILL.md',
+          'menu.demo': 'Magazin demo live ↗', 'menu.code': 'Codul sursă ↗', 'menu.getext': 'Instalează extensia',
+          'menu.zip': 'Descarcă arhiva ZIP', 'menu.profile': 'Creează-ți profilul', 'menu.why': 'De ce Cabina',
+          'menu.about': 'Despre Cabina',
           'footer': 'The Cabin · proba virtuală cu AI · © 2026',
+          'foot.tag': 'Proba virtuală cu AI, pentru cine ești cu adevărat.',
+          'foot.privacy': 'Confidențialitate', 'foot.terms': 'Termeni', 'foot.contact': 'Contact',
           'hero.eyebrow': 'PROBA VIRTUALĂ CU AI',
           'hero.title': 'Vezi hainele <em>pe tine</em>,<br/>nu pe manechin.',
           'hero.sub': 'Cabina îți arată cum arată orice produs de modă purtat chiar de tine — în câteva secunde, pe orice magazin.',
-          'hero.cta1': '⧈  Creează-ți profilul', 'hero.cta2': 'Cum funcționează',
+          'hero.cta1': 'Creează-ți profilul', 'hero.see': 'Vezi-o în acțiune',
+          'hero.k1': 'Probă realistă', 'hero.k2': 'Merge pe orice site de modă', 'hero.k3': 'Look-ul tău, pe corpul tău',
           'steps.title': 'Trei pași', 'steps.sub': 'De la o fotografie la „te văd purtând-o”.',
           's1.t': 'Încarcă-ți poza', 's1.d': 'O singură fotografie din cap până-n picioare. Rămâne a ta, securizată.',
           's2.t': '„Probează în Cabină”', 's2.d': 'Pe orice produs, butonul apare chiar lângă „Adaugă în coș”.',
-          's3.t': 'Te vezi purtând-o', 's3.d': 'În câteva secunde — iar proba rămâne salvată în Cabina ta.',
+          's3.t': 'Te vezi purtând‑o', 's3.d': 'În câteva secunde — iar proba rămâne salvată în Cabina ta.',
+          'demo.try': 'Probează', 'demo.cart': 'Adaugă în coș',
           'forms.title': 'Trei forme, un singur motor', 'forms.sub': 'Pentru cumpărători, pentru magazine și pentru designerii independenți.',
           'ext.t': 'Extensie de browser', 'ext.d': 'Pentru cumpărători — funcționează pe orice site de modă, direct din browser, fără ca magazinul să facă ceva.',
           'sdk.t': 'SDK pentru magazine', 'sdk.d': 'O singură linie de cod. Se încarcă după pagină, fără impact pe viteză sau SEO. Pe orice dispozitiv, inclusiv iPhone.',
-          'hero.cta3': '⤓  Instalează extensia',
           'ext.cta': 'Instalează extensia ↓', 'sdk.cta': 'Exemplu live: magazin demo ↗', 'sdk.docs': 'Ghid de integrare →',
           'mkt.badge': 'În plan', 'mkt.t': 'Marketplace',
           'mkt.d': 'Pentru afaceri mici și designeri de modă independenți: își listează piesele pe marketplace-ul nostru, unde fiecare cumpărător se vede pe sine ca model.',
+          'action.title': 'Vezi-o în acțiune', 'action.sub': 'Câteva exemple cu Cabina la lucru.',
+          'action.photo': 'Poza ta', 'action.result': 'Rezultatul probei virtuale',
+          'action.c1': 'Corpul tău, proporțiile tale', 'action.c2': 'Croială, material și cădere realiste',
+          'action.c3': 'Merge cu orice produs, pe orice magazin',
           'dl.title': 'Instalează extensia', 'dl.sub': 'Pentru Chrome, Edge, Brave și alte browsere Chromium, pe desktop.',
-          'dl.name': 'The Cabin pentru Chrome', 'dl.note': 'Nu e încă în Chrome Web Store, așa că se instalează manual, în patru pași.',
-          'dl.btn': '⤓  Descarcă extensia',
+          'dl.note': 'Nu e încă în Chrome Web Store, așa că se instalează manual, în patru pași.',
+          'dl.btn': 'Descarcă extensia',
           'dl.s1': 'Dezarhivează fișierul descărcat.',
-          'dl.s2': 'Deschide <code>chrome://extensions</code> (în Edge: <code>edge://extensions</code>).',
+          'dl.s2': 'Deschide <code>chrome://extensions</code> (în Edge: <code class="gold">edge://extensions</code>).',
           'dl.s3': 'Pornește <b>Developer mode</b> (modul pentru dezvoltatori).',
           'dl.s4': 'Apasă <b>Load unpacked</b> (încarcă extensia neîmpachetată) și alege folderul dezarhivat.',
           'dl.done': 'Apoi deschide orice produs pe <b>fashiondays.ro</b>: butonul auriu <b>Try it on</b> apare imediat sub <b>Adaugă în coș</b>.',
+          'why.title': 'De ce Cabina', 'why.sub': 'Un mod mai personal, mai sigur și mai eficient de a cumpăra modă online.',
+          'w1.t': 'Mai multă încredere', 'w1.d': 'Vezi cum îți vine înainte să cumperi.',
+          'w2.t': 'Conversie mai bună', 'w2.d': 'O experiență de cumpărare mai captivantă și mai personală.',
+          'w3.t': 'Integrare ușoară', 'w3.d': 'Merge pe orice magazin, cu efort minim.',
+          'w4.t': 'Un ecosistem mai mare', 'w4.d': 'Cumpărători, magazine și designeri independenți, pe o singură platformă.',
           'profile.title': 'Profilul tău',
           'profile.consent': 'Sunt de acord ca fotografia mea să fie procesată de AI (Meta AI) doar pentru a genera proba virtuală, conform <a href="#" style="color:var(--cabin-gold-300)">Politicii de confidențialitate</a>. Necesar înainte de încărcare.',
           'profile.photoLabel': 'Fotografia ta — corp întreg, din față, fundal simplu',
@@ -93,6 +230,40 @@ const { title = 'The Cabin — AI virtual try-on' } = Astro.props;
             }
           }).catch(function () {});
         };
+        // Menus: hover opens them on desktop; a click/tap toggles them everywhere; Esc or a click outside closes.
+        function menus() {
+          var nav = document.getElementById('nav');
+          var burger = document.getElementById('nav-burger');
+          var all = Array.prototype.slice.call(document.querySelectorAll('.mi'));
+          function closeAll(except) {
+            all.forEach(function (m) {
+              if (m === except) return;
+              m.classList.remove('open');
+              m.querySelector('.mi-trigger').setAttribute('aria-expanded', 'false');
+            });
+          }
+          all.forEach(function (m) {
+            m.querySelector('.mi-trigger').addEventListener('click', function (e) {
+              e.stopPropagation();
+              var open = !m.classList.contains('open');
+              closeAll(m);
+              m.classList.toggle('open', open);
+              this.setAttribute('aria-expanded', open ? 'true' : 'false');
+            });
+          });
+          function setDrawer(open) {
+            nav.classList.toggle('open', open);
+            burger.setAttribute('aria-expanded', open ? 'true' : 'false');
+            document.documentElement.classList.toggle('nav-locked', open);
+          }
+          burger.addEventListener('click', function (e) { e.stopPropagation(); setDrawer(!nav.classList.contains('open')); });
+          document.addEventListener('click', function (e) {
+            if (!e.target.closest('.mi')) closeAll(null);
+            if (nav.classList.contains('open') && !e.target.closest('.nav-menu') && !e.target.closest('.nav-burger')) setDrawer(false);
+          });
+          document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { closeAll(null); setDrawer(false); } });
+          document.querySelectorAll('.nav-menu a').forEach(function (a) { a.addEventListener('click', function () { setDrawer(false); }); });
+        }
         function apply() {
           if (lang !== 'en') {
             document.querySelectorAll('[data-i18n]').forEach(function (el) {
@@ -106,6 +277,7 @@ const { title = 'The Cabin — AI virtual try-on' } = Astro.props;
             b.classList.toggle('on', b.getAttribute('data-lang') === lang);
             b.addEventListener('click', function () { localStorage.setItem('cabin-lang', b.getAttribute('data-lang')); location.reload(); });
           });
+          menus();
           window.__cabinNav(); // after the translations, so the profile name is not overwritten
         }
         if (document.readyState !== 'loading') apply();
