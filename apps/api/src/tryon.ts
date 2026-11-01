@@ -4,7 +4,17 @@ import * as schema from './db/schema';
 import type { DB } from './db/client';
 import type { Env } from './env';
 import { newId, sha256Hex, dataUri, fetchImageAsDataUri, encodeKey } from './util';
-import { metaTryon, MetaBlockedError, META_IMAGE_MODEL, META_COST_USD, META_VARIANT } from './meta';
+import {
+  metaTryon,
+  metaSceneTryon,
+  MetaBlockedError,
+  META_IMAGE_MODEL,
+  META_COST_USD,
+  META_VARIANT,
+  META_SCENE_VARIANT,
+} from './meta';
+import { faceCloseup } from './avatar';
+import { storeScene } from './scene';
 import { chargeCredit, refundCredit } from './credits';
 import { activeProfile, type ProfileRow } from './profiles';
 import { PhotonImage } from '@cf-wasm/photon';
@@ -100,9 +110,12 @@ type GarmentRow = typeof schema.garments.$inferSelect;
 type ResultRow = typeof schema.tryonResults.$inferSelect;
 
 /** One cached try-on per (user, photo version, garment, variant). Photo versions are unique per account. */
-function cacheKeyFor(userId: string, bodyVersion: number, garmentId: string): Promise<string> {
-  return sha256Hex(`${userId}:${bodyVersion}:${garmentId}:${META_VARIANT}`);
+function cacheKeyFor(userId: string, bodyVersion: number, garmentId: string, variant: string): Promise<string> {
+  return sha256Hex(`${userId}:${bodyVersion}:${garmentId}:${variant}`);
 }
+
+/** Newest first: a try-on in the store's scene beats one on the customer's own photo. */
+const VARIANTS = [META_SCENE_VARIANT, META_VARIANT];
 
 /** Load the profile's current body photo + the garment image as data URIs (for Muse Image). */
 async function prepareInputs(
@@ -146,30 +159,46 @@ export async function runTryon(
   if (!profile.primaryPhotoId) throw new TryonError('no_body_photo', 'Upload a body photo first.');
 
   const garment = await resolveGarment(db, ctx.tenantId, garmentImageUrl, pageUrl, productRef, category);
-  const cacheKey = await cacheKeyFor(ctx.userId, profile.bodyVersion, garment.id);
+  const hitFor = async (variant: string) => {
+    const cacheKey = await cacheKeyFor(ctx.userId, profile.bodyVersion, garment.id, variant);
+    const row = await db.select().from(schema.tryonResults).where(eq(schema.tryonResults.cacheKey, cacheKey)).get();
+    return { cacheKey, row };
+  };
+  const cacheHit = (row: ResultRow) => logUsage(db, ctx.tenantId, ctx.userId, 'cache_hit', { garmentId: garment.id }).then(
+    () => ({ garmentId: garment.id, profileId: profile.id, result: { ...doneResult(row), cached: true } }),
+  );
 
-  const cached = await db.select().from(schema.tryonResults).where(eq(schema.tryonResults.cacheKey, cacheKey)).get();
-  if (cached && cached.status === 'done' && cached.resultR2Key) {
-    await logUsage(db, ctx.tenantId, ctx.userId, 'cache_hit', { garmentId: garment.id });
-    return { garmentId: garment.id, profileId: profile.id, result: { ...doneResult(cached), cached: true } };
-  }
+  let { cacheKey, row: cached } = await hitFor(META_SCENE_VARIANT);
+  if (cached?.status === 'done' && cached.resultR2Key) return cacheHit(cached);
 
   const { bodyB64, garmentB64 } = await prepareInputs(env, db, profile, garment);
+
+  // The store's scene needs a person in the product photo; flat lays are dressed on the customer's own photo.
+  const scene = await storeScene(env, db, ctx, garment, garmentB64);
+  const variant = scene.masked ? META_SCENE_VARIANT : META_VARIANT;
+  if (!scene.masked) {
+    ({ cacheKey, row: cached } = await hitFor(META_VARIANT));
+    if (cached?.status === 'done' && cached.resultR2Key) return cacheHit(cached);
+  }
+  const face = scene.masked ? await faceCloseup(env, db, ctx.tenantId, profile) : null;
+  const endUser = (await sha256Hex(`end-user:${ctx.userId}`)).slice(0, 32);
 
   // 1 credit per new generation (cache hits above are free). Refunded if it never produces an image.
   if (!(await chargeCredit(db, ctx.userId))) throw new TryonError('no_credits', 'Out of credits.');
 
-  // Muse Image: one synchronous call returns the finished image (~10–15 s).
+  // Muse Image: one synchronous call returns the finished image (~15–35 s in the store's scene).
   let gen: Awaited<ReturnType<typeof metaTryon>>;
   try {
-    gen = await metaTryon(env, bodyB64, garmentB64);
+    gen = scene.masked
+      ? await metaSceneTryon(env, bodyB64, face, scene.masked, endUser)
+      : await metaTryon(env, bodyB64, garmentB64, endUser);
   } catch (e) {
     await refundCredit(db, ctx.userId);
     if (e instanceof MetaBlockedError) throw new TryonError('content_blocked', e.message);
     throw e;
   }
   const webp = gen.contentType.includes('webp') ? gen.bytes : toWebp(gen.bytes);
-  const resultKey = `results/${ctx.tenantId}/${ctx.userId}/${garment.imageHash}/${profile.bodyVersion}-${META_VARIANT}.webp`;
+  const resultKey = `results/${ctx.tenantId}/${ctx.userId}/${garment.imageHash}/${profile.bodyVersion}-${variant}.webp`;
   await env.BUCKET.put(resultKey, webp, { httpMetadata: { contentType: 'image/webp' } });
 
   const id = cached?.id ?? newId('try');
@@ -187,7 +216,7 @@ export async function runTryon(
     costUsd: META_COST_USD,
     error: null,
     createdAt: Date.now(),
-    variant: META_VARIANT,
+    variant,
     batchId: batchId ?? null,
   };
   if (cached) await db.update(schema.tryonResults).set(rec).where(eq(schema.tryonResults.id, cached.id)).run();
@@ -231,9 +260,14 @@ export async function lookupResults(
       .where(and(eq(schema.garments.tenantId, ctx.tenantId), eq(schema.garments.imageHash, imageHash)))
       .get();
     if (!g) continue;
-    const cacheKey = await cacheKeyFor(ctx.userId, profile.bodyVersion, g.id);
-    const tr = await db.select().from(schema.tryonResults).where(eq(schema.tryonResults.cacheKey, cacheKey)).get();
-    if (tr?.status === 'done' && tr.resultR2Key) out.push({ garmentImageUrl: url, resultUrl: imageUrl(tr.resultR2Key) });
+    for (const variant of VARIANTS) {
+      const cacheKey = await cacheKeyFor(ctx.userId, profile.bodyVersion, g.id, variant);
+      const tr = await db.select().from(schema.tryonResults).where(eq(schema.tryonResults.cacheKey, cacheKey)).get();
+      if (tr?.status === 'done' && tr.resultR2Key) {
+        out.push({ garmentImageUrl: url, resultUrl: imageUrl(tr.resultR2Key) });
+        break;
+      }
+    }
   }
   return out;
 }

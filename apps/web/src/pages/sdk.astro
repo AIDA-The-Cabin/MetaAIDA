@@ -1,0 +1,259 @@
+---
+import Layout from '../layouts/Layout.astro';
+
+const ORIGIN = 'https://metaaida.pages.dev';
+const LINE = `<script src="${ORIGIN}/cabin.js" data-cabin-key="YOUR_STORE_KEY" async></script>`;
+const AI_PROMPT = `Read ${ORIGIN}/sdk/SKILL.md and add The Cabin SDK to this store. The store key is YOUR_STORE_KEY.`;
+
+const NEXT = `// app/layout.tsx
+import Script from 'next/script';
+
+export default function RootLayout({ children }) {
+  return (
+    <html lang="en">
+      <body>
+        {children}
+        <Script src="${ORIGIN}/cabin.js" data-cabin-key="YOUR_STORE_KEY" strategy="lazyOnload" />
+      </body>
+    </html>
+  );
+}`;
+
+const SPA = `// after every client-side navigation (React Router, Vue Router, Next.js…)
+window.TheCabin?.refresh();`;
+
+const MARKERS = `<img data-cabin-image src="/img/linen-dress-front.jpg" alt="Linen dress">
+<h1 data-cabin-name>Linen midi dress</h1>
+<button data-cabin-cart>Add to cart</button>
+<!-- or, to choose exactly where "Try it on" goes: -->
+<div data-cabin-button></div>`;
+
+const CSP = `script-src  ${ORIGIN};
+connect-src ${ORIGIN};
+img-src     ${ORIGIN} data: blob:;`;
+---
+
+<Layout title="The Cabin SDK — add virtual try-on to your store">
+  <section class="hero">
+    <p class="eyebrow">For stores</p>
+    <h1 class="hero-title">Add The Cabin<br />to your store</h1>
+    <p class="hero-sub">
+      One line of code. Your customers see your clothes on themselves — in your own product photos, with your
+      background, pose and light.
+    </p>
+    <div class="hero-cta">
+      <a class="btn-gold" href="#line">&lt;/&gt;&nbsp; Get the line</a>
+      <a class="btn-ghost" href="https://metaaida-shop-demo.pages.dev" target="_blank" rel="noopener">Live demo store ↗</a>
+      <a class="btn-ghost" href="#ai">Let your AI do it</a>
+    </div>
+  </section>
+
+  <hr class="gold-hr" />
+
+  <div class="docs wrap">
+    <section id="line" class="doc">
+      <h2><span class="n">1</span> Paste one line</h2>
+      <p>
+        Add this tag to your site's shared layout, just before <code>&lt;/body&gt;</code>, so it is on every product
+        page. Replace <code>YOUR_STORE_KEY</code> with the key you receive when The Cabin is installed for your store.
+      </p>
+      <div class="code"><button class="copy" data-copy={LINE}>Copy</button><pre><code>{LINE}</code></pre></div>
+      <p class="note">
+        That's the whole integration on a standard product page: a gold <b>Try it on</b> button appears right after
+        your <b>Add to cart</b> button. The script loads after your page has finished loading, so it never slows it
+        down.
+      </p>
+    </section>
+
+    <section class="doc">
+      <h2><span class="n">2</span> Where to paste it</h2>
+      <div class="platforms">
+        <div class="card">
+          <h3>Any HTML site</h3>
+          <p>In the template every page shares (layout, footer include), just before <code>&lt;/body&gt;</code>.</p>
+        </div>
+        <div class="card">
+          <h3>Shopify</h3>
+          <p>Online Store → Themes → <b>Edit code</b> → <code>layout/theme.liquid</code>, just before <code>&lt;/body&gt;</code>.</p>
+        </div>
+        <div class="card">
+          <h3>WooCommerce / WordPress</h3>
+          <p>Your theme's <code>footer.php</code>, before <code>&lt;/body&gt;</code> — or a header-and-footer scripts plugin, in the footer slot.</p>
+        </div>
+        <div class="card">
+          <h3>React / Vue / any SPA</h3>
+          <p>In <code>index.html</code>, then call <code>window.TheCabin?.refresh()</code> after each page change (step 4).</p>
+        </div>
+      </div>
+      <p class="sub">Next.js (App Router):</p>
+      <div class="code"><button class="copy" data-copy={NEXT}>Copy</button><pre><code>{NEXT}</code></pre></div>
+    </section>
+
+    <section class="doc">
+      <h2><span class="n">3</span> What a product page needs</h2>
+      <p>The script finds the product on its own when the page has:</p>
+      <ul class="ticks">
+        <li><code>&lt;meta property="og:image"&gt;</code> — the main product photo (the one your customer will appear in).</li>
+        <li><code>&lt;meta property="og:title"&gt;</code> — the product name (otherwise the page's <code>&lt;h1&gt;</code>).</li>
+        <li>An add-to-cart button whose text says <i>Add to cart / bag / basket</i> or <i>Adaugă în coș</i>.</li>
+      </ul>
+      <p>
+        Most stores already have all three. If yours doesn't — or you want to choose exactly what is used — mark the
+        elements yourself; markers always win over detection:
+      </p>
+      <div class="code"><button class="copy" data-copy={MARKERS}>Copy</button><pre><code>{MARKERS}</code></pre></div>
+      <div class="table">
+        <table>
+          <thead><tr><th>Marker</th><th>Put it on</th></tr></thead>
+          <tbody>
+            <tr><td><code>data-cabin-image</code></td><td>The main product <code>&lt;img&gt;</code>. On any other element, give the photo URL as the value: <code>data-cabin-image="https://…"</code>.</td></tr>
+            <tr><td><code>data-cabin-name</code></td><td>The element holding the product name, or the name as the value.</td></tr>
+            <tr><td><code>data-cabin-cart</code></td><td>Your add-to-cart button. <b>Try it on</b> is placed right after it.</td></tr>
+            <tr><td><code>data-cabin-button</code></td><td>An empty element: <b>Try it on</b> goes inside it instead.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="note">Pages without an add-to-cart button (home, category, cart) are left alone.</p>
+    </section>
+
+    <section class="doc">
+      <h2><span class="n">4</span> Options and JavaScript API</h2>
+      <div class="table">
+        <table>
+          <thead><tr><th>Attribute</th><th>Required</th><th>What it does</th></tr></thead>
+          <tbody>
+            <tr><td><code>data-cabin-key</code></td><td data-label="Required">yes</td><td>Your store key.</td></tr>
+            <tr><td><code>data-lang</code></td><td data-label="Required">no</td><td>Widget language: <code>en</code> (default) or <code>ro</code>.</td></tr>
+            <tr><td><code>async</code></td><td data-label="Required">yes</td><td>Keeps the script off your page's critical path.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Single-page apps change pages without reloading. Tell The Cabin after each navigation:</p>
+      <div class="code"><button class="copy" data-copy={SPA}>Copy</button><pre><code>{SPA}</code></pre></div>
+      <div class="table">
+        <table>
+          <thead><tr><th>Call</th><th>What it does</th></tr></thead>
+          <tbody>
+            <tr><td><code>window.TheCabin.refresh()</code></td><td>Finds the product on the current page and puts <b>Try it on</b> next to it (removes the previous one).</td></tr>
+            <tr><td><code>window.TheCabin.open()</code></td><td>Opens the customer's Cabin (their saved looks).</td></tr>
+            <tr><td><code>window.TheCabin.close()</code></td><td>Closes it.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="doc">
+      <h2><span class="n">5</span> What your customers get</h2>
+      <ol class="flow">
+        <li><b>Try it on</b> next to Add to cart. The first time, they make a profile with one full-body photo.</li>
+        <li>In about 20–30 seconds, your product photo turns into a photo of <b>them</b> wearing the piece — same background, pose and light as your photo, with their own face and body.</li>
+        <li>The look is saved in <b>The Cabin</b> (the tab on the side of the page) and comes back on its own when they return.</li>
+        <li>One profile works everywhere: in your store, in other stores with The Cabin, and in our browser extension.</li>
+      </ol>
+    </section>
+
+    <section class="doc">
+      <h2><span class="n">6</span> Speed, styling and privacy</h2>
+      <ul class="ticks">
+        <li>Starts only after your page has loaded and the browser is idle — no effect on rendering, SEO or Core Web Vitals. About 30 KB gzipped.</li>
+        <li>Everything renders inside a Shadow DOM: your CSS can't break it, and it can't touch your styles.</li>
+        <li>Customer photos go straight from the browser to The Cabin — they never pass through your servers.</li>
+        <li>Each product photo is generated once per customer; returning visits are served from cache.</li>
+      </ul>
+      <p>If your site sends a Content-Security-Policy, allow our origin:</p>
+      <div class="code"><button class="copy" data-copy={CSP}>Copy</button><pre><code>{CSP}</code></pre></div>
+    </section>
+
+    <section class="doc">
+      <h2><span class="n">7</span> Troubleshooting</h2>
+      <div class="table">
+        <table>
+          <thead><tr><th>You see</th><th>Do this</th></tr></thead>
+          <tbody>
+            <tr><td>No button, and <code>[cabin] bootstrap 401</code> in the console</td><td>The key is missing or wrong — check <code>data-cabin-key</code>.</td></tr>
+            <tr><td>No button, no message</td><td>The page has no <code>og:image</code> — add it, or mark the photo with <code>data-cabin-image</code>.</td></tr>
+            <tr><td>The button is in the wrong place</td><td>Mark your add-to-cart button with <code>data-cabin-cart</code>, or a spot with <code>data-cabin-button</code>.</td></tr>
+            <tr><td>The button stays on the old product after navigating</td><td>Call <code>window.TheCabin.refresh()</code> after each page change.</td></tr>
+            <tr><td>Nothing loads, CSP errors in the console</td><td>Add the three CSP lines from step 6.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="ai" class="doc">
+      <h2><span class="n">✦</span> Let your AI do it</h2>
+      <p>
+        Working with an AI coding assistant (Claude Code, Codex, Cursor, Copilot…)? Give it our integration skill — a
+        step-by-step guide written for AI assistants — and it will add The Cabin to your store and check its own work.
+      </p>
+      <div class="code"><button class="copy" data-copy={AI_PROMPT}>Copy</button><pre><code>{AI_PROMPT}</code></pre></div>
+      <p class="actions">
+        <a class="btn-gold" href="/sdk/SKILL.md" target="_blank" rel="noopener">Open SKILL.md</a>
+        <a class="btn-ghost" href="/sdk/SKILL.md" download="SKILL.md">Download</a>
+      </p>
+    </section>
+  </div>
+
+  <script is:inline>
+    document.querySelectorAll('.copy').forEach(function (b) {
+      b.addEventListener('click', function () {
+        navigator.clipboard.writeText(b.getAttribute('data-copy') || '').then(function () {
+          b.textContent = 'Copied';
+          setTimeout(function () { b.textContent = 'Copy'; }, 1500);
+        });
+      });
+    });
+  </script>
+</Layout>
+
+<style>
+  .docs { max-width: 900px; padding-top: 30px; padding-bottom: 20px; }
+  .doc { padding: 34px 0; border-bottom: 1px solid var(--cabin-border); }
+  .doc:last-child { border-bottom: none; }
+  .doc h2 { font-family: var(--serif); font-weight: 500; font-size: clamp(26px, 3.4vw, 34px); margin: 0 0 14px;
+    display: flex; align-items: center; gap: 14px; }
+  .n { flex: none; width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--cabin-border-gold);
+    display: inline-flex; align-items: center; justify-content: center; font-family: var(--sans); font-size: 15px;
+    color: var(--cabin-gold-300); }
+  .doc p { color: var(--cabin-text-mid); margin: 0 0 16px; }
+  .doc p.sub { margin: 22px 0 10px; color: var(--cabin-text-hi); font-weight: 500; }
+  .doc p.note { font-size: 14px; margin-top: 14px; }
+  .doc b { color: var(--cabin-text-hi); font-weight: 600; }
+  .doc code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; color: var(--cabin-gold-100);
+    background: var(--cabin-bg-inset); border: 1px solid var(--cabin-border); border-radius: 6px; padding: 1px 6px; }
+  .code { position: relative; background: var(--cabin-bg-inset); border: 1px solid var(--cabin-border-gold); border-radius: 12px; margin: 0 0 6px; }
+  .code pre { margin: 0; padding: 18px 20px; overflow-x: auto; }
+  .code pre code { background: none; border: none; padding: 0; font-size: 13.5px; line-height: 1.6; color: var(--cabin-gold-100); white-space: pre; }
+  .copy { position: absolute; top: 10px; right: 10px; z-index: 1; background: var(--cabin-bg-elevated); color: var(--cabin-text-mid);
+    border: 1px solid var(--cabin-border); border-radius: 8px; padding: 4px 12px; font-size: 12px; cursor: pointer; font-family: inherit; }
+  .copy:hover { color: var(--cabin-gold-300); border-color: var(--cabin-gold-700); }
+  .code pre { padding-right: 84px; }
+  .platforms { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+  .platforms .card { padding: 20px 22px; }
+  .platforms .card h3 { margin: 0 0 6px; font-size: 21px; }
+  .platforms .card p { margin: 0; font-size: 14px; }
+  .ticks { list-style: none; margin: 0 0 16px; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+  .ticks li { position: relative; padding-left: 26px; color: var(--cabin-text-mid); }
+  .ticks li::before { content: '✦'; position: absolute; left: 0; top: 0; color: var(--cabin-gold-500); font-size: 13px; }
+  .flow { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 10px; color: var(--cabin-text-mid); }
+  .flow li::marker { color: var(--cabin-gold-300); }
+  .table { overflow-x: auto; margin: 6px 0 16px; border: 1px solid var(--cabin-border); border-radius: 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { text-align: left; font-weight: 500; color: var(--cabin-text-hi); background: var(--cabin-bg-surface); padding: 10px 14px; }
+  td { color: var(--cabin-text-mid); padding: 10px 14px; border-top: 1px solid var(--cabin-border); vertical-align: top; }
+  td:first-child { white-space: nowrap; }
+  .actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 18px; }
+  @media (max-width: 640px) {
+    .platforms { grid-template-columns: 1fr; }
+    .doc h2 { gap: 10px; }
+    .table { overflow-x: visible; }
+    table, tbody, tr, td { display: block; }
+    thead { display: none; }
+    tr { padding: 12px 14px; border-top: 1px solid var(--cabin-border); }
+    tbody tr:first-child { border-top: none; }
+    td { border: none; padding: 2px 0; }
+    td:first-child { margin-bottom: 4px; }
+    td[data-label]::before { content: attr(data-label) ": "; color: var(--cabin-text-low); }
+    .code pre { padding: 16px 14px; padding-right: 14px; padding-top: 42px; }
+  }
+</style>

@@ -19,7 +19,7 @@ import { stubAuth, tenantFromApiKey } from './auth';
 import { getCredits } from './credits';
 import { runTryon, imageUrl, TryonError, getTryonById, lookupResults } from './tryon';
 import { activeProfile, createProfile, listProfiles, nextBodyVersion, profileSummary, setActiveProfile } from './profiles';
-import { avatarKey, buildAvatar } from './avatar';
+import { avatarKey, buildAvatar, closeupKey } from './avatar';
 import { seed } from './seed';
 import { newId, decodeKey, sha256Hex } from './util';
 
@@ -161,9 +161,9 @@ app.post('/v1/profiles/:id/activate', async (c) => {
   return c.json({ ok: true, activeId: p.id });
 });
 
-// Delete one profile with everything it owns (photos, avatar, try-ons, Cabin). An account keeps at least one.
+// Delete one profile with everything it owns (photos, avatar, face close-ups, try-ons, Cabin). An account keeps at least one.
 app.delete('/v1/profiles/:id', async (c) => {
-  const { userId } = stubAuth();
+  const { userId, tenantId } = stubAuth();
   const db = getDb(c.env.DB);
   const all = await listProfiles(db, userId);
   const p = all.find((x) => x.id === c.req.param('id'));
@@ -171,7 +171,12 @@ app.delete('/v1/profiles/:id', async (c) => {
   if (all.length <= 1) return c.json({ error: 'last_profile', detail: 'An account keeps at least one profile.' }, 400);
   const photos = await db.select().from(schema.userPhotos).where(eq(schema.userPhotos.profileId, p.id)).all();
   const results = await db.select().from(schema.tryonResults).where(eq(schema.tryonResults.profileId, p.id)).all();
-  const keys = [...photos.map((x) => x.r2Key), ...results.map((r) => r.resultR2Key), p.avatarR2Key].filter((k): k is string => !!k);
+  const keys = [
+    ...photos.map((x) => x.r2Key),
+    ...photos.map((x) => closeupKey(tenantId, userId, x.id)),
+    ...results.map((r) => r.resultR2Key),
+    p.avatarR2Key,
+  ].filter((k): k is string => !!k);
   if (keys.length) await c.env.BUCKET.delete(keys);
   await db.delete(schema.cabinItems).where(eq(schema.cabinItems.profileId, p.id)).run();
   await db.delete(schema.tryonResults).where(eq(schema.tryonResults.profileId, p.id)).run();
@@ -386,8 +391,9 @@ app.post(ROUTES.sdkBootstrap, async (c) => {
 app.post(ROUTES.accountDelete, async (c) => {
   const { userId, tenantId } = stubAuth();
   const db = getDb(c.env.DB);
-  // purge R2 objects (body photos, avatars, generated results) of every profile
-  for (const prefix of [`bodies/${tenantId}/${userId}/`, `avatars/${tenantId}/${userId}/`, `results/${tenantId}/${userId}/`]) {
+  // purge R2 objects (body photos, avatars, face close-ups, generated results) of every profile
+  const prefixes = ['bodies', 'avatars', 'faces', 'results'].map((p) => `${p}/${tenantId}/${userId}/`);
+  for (const prefix of prefixes) {
     const listed = await c.env.BUCKET.list({ prefix });
     await Promise.all(listed.objects.map((o) => c.env.BUCKET.delete(o.key)));
   }

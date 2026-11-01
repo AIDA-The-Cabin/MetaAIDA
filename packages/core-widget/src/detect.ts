@@ -7,7 +7,11 @@ export interface DetectedProduct {
 }
 
 function meta(prop: string): string | undefined {
-  return document.querySelector<HTMLMetaElement>(`meta[property="${prop}"]`)?.content || undefined;
+  return (
+    document.querySelector<HTMLMetaElement>(`meta[property="${prop}"]`)?.content ||
+    document.querySelector<HTMLMetaElement>(`meta[name="${prop}"]`)?.content ||
+    undefined
+  );
 }
 
 function findAddToCart(): HTMLElement | null {
@@ -108,12 +112,47 @@ export function detectGallery(ogImage?: string): GalleryImage[] {
   return [...map.values()];
 }
 
-/** Generic Open-Graph product detection — works on any PDP exposing og:image / og:title. */
+function marked(attr: string): HTMLElement | null {
+  return document.querySelector<HTMLElement>(`[${attr}]`);
+}
+
+function absolute(url: string | null | undefined): string | undefined {
+  if (!url) return undefined;
+  try {
+    return new URL(url, location.href).href;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Product detection for the SDK. A store's own markers win over guessing:
+ *   data-cabin-image  — the main product photo (<img>, or any element with the photo URL as the value)
+ *   data-cabin-name   — the product name (text, or the value)
+ *   data-cabin-cart   — the add-to-cart button; Try it on goes right after it
+ *   data-cabin-button — an empty element to put Try it on into instead
+ * Without markers: Open Graph (og:image, og:title) + the add-to-cart button found by its text.
+ * No add-to-cart button and no slot → not a product page (null).
+ */
 export function detectProductOG(): DetectedProduct | null {
-  const garmentImageUrl = meta('og:image');
+  const imageEl = marked('data-cabin-image');
+  const markedUrl =
+    imageEl?.getAttribute('data-cabin-image') ||
+    (imageEl instanceof HTMLImageElement ? imageEl.currentSrc || imageEl.src : '');
+  const garmentImageUrl = absolute(markedUrl) || meta('og:image');
   if (!garmentImageUrl) return null;
-  const name = meta('og:title') || document.querySelector('h1')?.textContent?.trim() || 'Product';
-  const addToCart = findAddToCart();
-  const actions = (addToCart?.parentElement as HTMLElement | null) ?? document.body;
-  return { garmentImageUrl, name, actions, addToCart, productImage: findProductImage(garmentImageUrl) };
+  const nameEl = marked('data-cabin-name');
+  const name =
+    nameEl?.getAttribute('data-cabin-name') ||
+    nameEl?.textContent?.trim() ||
+    meta('og:title') ||
+    document.querySelector('h1')?.textContent?.trim() ||
+    'Product';
+  const slot = marked('data-cabin-button');
+  const addToCart = slot ? null : (marked('data-cabin-cart') ?? findAddToCart());
+  // A product page has somewhere to buy: no cart button and no slot → home, category or cart page.
+  const actions = slot ?? (addToCart?.parentElement as HTMLElement | null);
+  if (!actions) return null;
+  const productImage = imageEl instanceof HTMLImageElement ? imageEl : findProductImage(garmentImageUrl);
+  return { garmentImageUrl, name, actions, addToCart, productImage };
 }
