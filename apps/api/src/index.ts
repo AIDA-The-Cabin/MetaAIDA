@@ -104,6 +104,21 @@ app.post(ROUTES.profilePhoto, async (c) => {
   return c.json({ ok: true, photoId, bodyVersion: nextVer });
 });
 
+// The current primary body photo (shown on the Profile page). 404 when there is none.
+app.get(ROUTES.profilePhoto, async (c) => {
+  const { userId } = stubAuth();
+  const db = getDb(c.env.DB);
+  const p = await db.select().from(schema.userProfiles).where(eq(schema.userProfiles.userId, userId)).get();
+  const photo = p?.primaryPhotoId
+    ? await db.select().from(schema.userPhotos).where(eq(schema.userPhotos.id, p.primaryPhotoId)).get()
+    : undefined;
+  const obj = photo ? await c.env.BUCKET.get(photo.r2Key) : null;
+  if (!obj) return c.json({ error: 'no_photo' }, 404);
+  return new Response(obj.body, {
+    headers: { 'Content-Type': obj.httpMetadata?.contentType ?? 'image/webp', 'Cache-Control': 'private, no-store' },
+  });
+});
+
 app.post(ROUTES.tryon, async (c) => {
   const ctx = stubAuth();
   const db = getDb(c.env.DB);
