@@ -1,0 +1,38 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout title="Dashboard — The Cabin">
+  <section class="section wrap">
+    <h1 class="section-title" style="text-align:left" data-i18n="dash.title">Dashboard</h1>
+    <p class="muted" data-i18n="dash.sub">Real-time usage metrics — exactly what a buyer sees at acquisition.</p>
+    <div class="metrics" id="metrics" style="margin-top:24px">
+      <div class="metric"><div class="label">…</div><div class="value">…</div></div>
+    </div>
+    <p class="muted" id="note" style="margin-top:18px"></p>
+  </section>
+
+  <script>
+    const API = import.meta.env.PUBLIC_API_BASE ?? '';
+    const L = (window as any).__lang || 'en';
+    const T = {
+      en: { labels: ['Try-ons', 'Cache rate', 'Avg latency', 'AI cost'],
+        note: (h: number, t: number) => `${h} of ${t} try-ons served instantly from cache — the AI cost is paid once per (person × product).`,
+        down: 'Worker unavailable (start @aida/api).' },
+      ro: { labels: ['Probe generate', 'Rată cache', 'Latență medie', 'Cost AI'],
+        note: (h: number, t: number) => `${h} din ${t} probe servite instant din cache — costul AI se plătește o singură dată per (persoană × produs).`,
+        down: 'Worker indisponibil (pornește @aida/api).' },
+    }[L as 'en' | 'ro'];
+
+    fetch(API + '/v1/admin/usage')
+      .then((r) => r.json())
+      .then((u) => {
+        const vals = [u.tryons, u.cacheHitRate + '%', (u.avgLatencyMs / 1000).toFixed(1) + 's', '$' + u.costUsd];
+        document.getElementById('metrics')!.innerHTML = T.labels
+          .map((l, i) => `<div class="metric"><div class="label">${l}</div><div class="value">${vals[i]}</div></div>`)
+          .join('');
+        document.getElementById('note')!.textContent = T.note(u.cacheHits, u.tryons);
+      })
+      .catch(() => { document.getElementById('metrics')!.innerHTML = `<p class="muted">${T.down}</p>`; });
+  </script>
+</Layout>

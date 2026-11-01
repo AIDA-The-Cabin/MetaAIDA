@@ -1,0 +1,92 @@
+---
+import '../styles/global.css';
+interface Props { title?: string }
+const { title = 'The Cabin — AI virtual try-on' } = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="The Cabin shows you how clothes look worn by you — AI virtual try-on." />
+    <title>{title}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,500&family=Inter:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <nav class="nav">
+      <a class="wordmark" href="/" data-i18n="nav.brand">The Cabin</a>
+      <div class="nav-links">
+        <a href="/profile" data-i18n="nav.profile">Profile</a>
+        <a href="/dashboard" data-i18n="nav.dashboard">Dashboard</a>
+        <span class="lang-switch"><button data-lang="en">EN</button><span>|</span><button data-lang="ro">RO</button></span>
+      </div>
+    </nav>
+    <slot />
+    <footer class="footer" data-i18n="footer">The Cabin · AI virtual try-on · © 2026</footer>
+
+    <script is:inline>
+      (function () {
+        const RO = {
+          'nav.brand': 'Cabina', 'nav.profile': 'Profil', 'nav.dashboard': 'Panou',
+          'footer': 'The Cabin · proba virtuală cu AI · © 2026',
+          'hero.eyebrow': 'PROBA VIRTUALĂ CU AI',
+          'hero.title': 'Vezi hainele <em>pe tine</em>,<br/>nu pe manechin.',
+          'hero.sub': 'Cabina îți arată cum arată orice produs de modă purtat chiar de tine — în câteva secunde, pe orice magazin.',
+          'hero.cta1': '⧈  Creează-ți profilul', 'hero.cta2': 'Cum funcționează',
+          'steps.title': 'Trei pași', 'steps.sub': 'De la o fotografie la „te văd purtând-o”.',
+          's1.t': 'Încarcă-ți poza', 's1.d': 'O singură fotografie din cap până-n picioare. Rămâne a ta, securizată.',
+          's2.t': '„Probează în Cabină”', 's2.d': 'Pe orice produs, butonul apare chiar lângă „Adaugă în coș”.',
+          's3.t': 'Te vezi purtând-o', 's3.d': 'În câteva secunde — iar proba rămâne salvată în Cabina ta.',
+          'forms.title': 'Trei forme, un singur motor', 'forms.sub': 'Pentru cumpărători, pentru magazine și pentru designerii independenți.',
+          'ext.t': 'Extensie de browser', 'ext.d': 'Pentru cumpărători — funcționează pe orice site de modă, direct din browser, fără ca magazinul să facă ceva.',
+          'sdk.t': 'SDK pentru magazine', 'sdk.d': 'O singură linie de cod. Se încarcă după pagină, fără impact pe viteză sau SEO. Pe orice dispozitiv, inclusiv iPhone.',
+          'hero.cta3': '⤓  Instalează extensia',
+          'ext.cta': 'Instalează extensia ↓', 'sdk.cta': 'Exemplu live: magazin demo ↗',
+          'mkt.badge': 'În plan', 'mkt.t': 'Marketplace',
+          'mkt.d': 'Pentru afaceri mici și designeri de modă independenți: își listează piesele pe marketplace-ul nostru, unde fiecare cumpărător se vede pe sine ca model.',
+          'dl.title': 'Instalează extensia', 'dl.sub': 'Pentru Chrome, Edge, Brave și alte browsere Chromium, pe desktop.',
+          'dl.name': 'The Cabin pentru Chrome', 'dl.note': 'Nu e încă în Chrome Web Store, așa că se instalează manual, în patru pași.',
+          'dl.btn': '⤓  Descarcă extensia',
+          'dl.s1': 'Dezarhivează fișierul descărcat.',
+          'dl.s2': 'Deschide <code>chrome://extensions</code> (în Edge: <code>edge://extensions</code>).',
+          'dl.s3': 'Pornește <b>Developer mode</b> (modul pentru dezvoltatori).',
+          'dl.s4': 'Apasă <b>Load unpacked</b> (încarcă extensia neîmpachetată) și alege folderul dezarhivat.',
+          'dl.done': 'Apoi deschide orice produs pe <b>fashiondays.ro</b>: butonul auriu <b>Try it on</b> apare imediat sub <b>Adaugă în coș</b>.',
+          'profile.title': 'Profilul tău',
+          'profile.consent': 'Sunt de acord ca fotografia mea să fie procesată de AI (Meta AI) doar pentru a genera proba virtuală, conform <a href="#" style="color:var(--cabin-gold-300)">Politicii de confidențialitate</a>. Necesar înainte de încărcare.',
+          'profile.photoLabel': 'Fotografia ta — corp întreg, din față, fundal simplu',
+          'profile.drop': 'Trage o poză aici sau apasă pentru a alege',
+          'profile.photoSet': '⧉ Fotografie setată',
+          'profile.height': 'Înălțime (cm) — opțional', 'profile.weight': 'Greutate (kg) — opțional',
+          'profile.save': 'Salvează măsurile', 'profile.cabin': 'Cabina ta', 'profile.delete': 'Șterge datele mele',
+          'dash.title': 'Panou', 'dash.sub': 'Metrici de utilizare în timp real — exact ce vede un cumpărător la achiziție.',
+        };
+        const lang = localStorage.getItem('cabin-lang') || 'en';
+        window.__lang = lang;
+        document.documentElement.lang = lang;
+        function apply() {
+          if (lang !== 'en') {
+            document.querySelectorAll('[data-i18n]').forEach(function (el) {
+              const k = el.getAttribute('data-i18n'); if (RO[k] != null) el.textContent = RO[k];
+            });
+            document.querySelectorAll('[data-i18n-html]').forEach(function (el) {
+              const k = el.getAttribute('data-i18n-html'); if (RO[k] != null) el.innerHTML = RO[k];
+            });
+          }
+          document.querySelectorAll('[data-lang]').forEach(function (b) {
+            b.classList.toggle('on', b.getAttribute('data-lang') === lang);
+            b.addEventListener('click', function () { localStorage.setItem('cabin-lang', b.getAttribute('data-lang')); location.reload(); });
+          });
+        }
+        if (document.readyState !== 'loading') apply();
+        else document.addEventListener('DOMContentLoaded', apply);
+      })();
+    </script>
+  </body>
+</html>

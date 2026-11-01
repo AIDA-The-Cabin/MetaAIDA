@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="ro">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rochie midi cu dantelă · Pieces — Atelier (SDK demo)</title>
+    <meta property="og:title" content="Rochie midi cu dantelă · Pieces" />
+    <meta
+      property="og:image"
+      content="https://fdcdn.akamaized.net/m/390x585/products/91330/91329856/images/res_b6f612355fc0107835f0f3af5e124851.jpg?s=ybP3u88LaYVI"
+    />
+    <style>
+      body { margin: 0; font-family: Georgia, 'Times New Roman', serif; background: #fbfaf7; color: #222; }
+      header { padding: 18px 30px; border-bottom: 1px solid #ece7dd; letter-spacing: .34em; font-size: 15px; }
+      main { max-width: 1000px; margin: 0 auto; padding: 40px 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 48px; }
+      img.pdp { width: 100%; border-radius: 4px; background: #efe9df; aspect-ratio: 390/585; object-fit: cover; }
+      h1 { font-size: 30px; margin: 0 0 14px; font-weight: 400; }
+      .brand { letter-spacing: .24em; color: #a08a64; font-size: 12px; margin: 0 0 10px; text-transform: uppercase; }
+      .price { font-size: 22px; margin: 0 0 28px; }
+      #actions { max-width: 360px; font-family: system-ui, sans-serif; }
+      #add { width: 100%; height: 52px; border: 1px solid #222; border-radius: 2px; background: #fff; color: #222; font-size: 14px; letter-spacing: .08em; text-transform: uppercase; cursor: pointer; }
+      @media (max-width: 640px) { main { grid-template-columns: 1fr; } }
+    </style>
+  </head>
+  <body>
+    <header>A T E L I E R <span style="color:#bbb;letter-spacing:.05em;font-size:12px">— SDK demo (different retailer)</span></header>
+    <main>
+      <div>
+        <img class="pdp" referrerpolicy="no-referrer"
+          src="https://fdcdn.akamaized.net/m/390x585/products/91330/91329856/images/res_b6f612355fc0107835f0f3af5e124851.jpg?s=ybP3u88LaYVI"
+          alt="Rochie midi cu dantelă" />
+      </div>
+      <div>
+        <p class="brand">Pieces</p>
+        <h1>Rochie midi cu dantelă</h1>
+        <p class="price">119,99 lei</p>
+        <div id="actions"><button id="add">Adaugă în coș</button></div>
+      </div>
+    </main>
+
+    <script src="./cabin.js" data-cabin-key="cabin_dev_1ec2578d01634438b3097a156fa791c8" data-api="https://metaaida.pages.dev" async></script>
+  </body>
+</html>

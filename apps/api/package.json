@@ -1,0 +1,24 @@
+{
+  "name": "@aida/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --port 8787",
+    "deploy": "wrangler deploy",
+    "db:apply:local": "wrangler d1 migrations apply metaaida --local",
+    "db:apply:remote": "wrangler d1 migrations apply metaaida --remote",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@aida/shared": "workspace:*",
+    "@cf-wasm/photon": "^0.3.6",
+    "drizzle-orm": "^0.38.3",
+    "hono": "^4.6.15"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241218.0",
+    "typescript": "^5.7.2",
+    "wrangler": "^3.99.0"
+  }
+}

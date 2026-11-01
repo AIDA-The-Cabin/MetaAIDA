@@ -1,0 +1,236 @@
+import { and, eq } from 'drizzle-orm';
+import { ROUTES, type TryonResult, type TryonStatus } from '@aida/shared';
+import * as schema from './db/schema';
+import type { DB } from './db/client';
+import type { Env } from './env';
+import { newId, sha256Hex, dataUri, fetchImageAsDataUri, encodeKey } from './util';
+import { metaTryon, MetaBlockedError, META_IMAGE_MODEL, META_COST_USD, META_VARIANT } from './meta';
+import { chargeCredit, refundCredit } from './credits';
+import { PhotonImage } from '@cf-wasm/photon';
+
+/** Muse Image is asked for WebP; anything else is converted before it lands in R2. */
+function toWebp(bytes: Uint8Array): Uint8Array {
+  const img = PhotonImage.new_from_byteslice(bytes);
+  try {
+    return img.get_bytes_webp();
+  } finally {
+    img.free();
+  }
+}
+
+export class TryonError extends Error {
+  code: string;
+  constructor(code: string, message: string) {
+    super(message);
+    this.code = code;
+  }
+}
+
+export function imageUrl(r2Key: string): string {
+  return ROUTES.images(encodeKey(r2Key));
+}
+
+async function logUsage(
+  db: DB,
+  tenantId: string,
+  userId: string,
+  eventType: string,
+  extra: { garmentId?: string; latencyMs?: number; costUsd?: number } = {},
+) {
+  await db
+    .insert(schema.usageEvents)
+    .values({
+      id: newId('ue'),
+      tenantId,
+      userId,
+      eventType,
+      garmentId: extra.garmentId ?? null,
+      latencyMs: extra.latencyMs ?? null,
+      costUsd: extra.costUsd ?? null,
+      createdAt: Date.now(),
+    })
+    .run();
+}
+
+export async function resolveGarment(
+  db: DB,
+  tenantId: string,
+  garmentImageUrl: string,
+  pageUrl: string,
+  productRef?: string,
+  category?: string,
+) {
+  const imageHash = await sha256Hex(garmentImageUrl);
+  let g = await db
+    .select()
+    .from(schema.garments)
+    .where(and(eq(schema.garments.tenantId, tenantId), eq(schema.garments.imageHash, imageHash)))
+    .get();
+  if (!g) {
+    await db
+      .insert(schema.garments)
+      .values({
+        id: newId('grm'),
+        tenantId,
+        imageHash,
+        sourceImageUrl: garmentImageUrl,
+        sourcePageUrl: pageUrl,
+        productRef: productRef ?? null,
+        category: category ?? null,
+        createdAt: Date.now(),
+      })
+      .run();
+    g = await db
+      .select()
+      .from(schema.garments)
+      .where(and(eq(schema.garments.tenantId, tenantId), eq(schema.garments.imageHash, imageHash)))
+      .get();
+  }
+  return g!;
+}
+
+export interface TryonOutcome {
+  result: TryonResult;
+  garmentId: string;
+}
+
+type GarmentRow = typeof schema.garments.$inferSelect;
+type ResultRow = typeof schema.tryonResults.$inferSelect;
+
+/** One cached try-on per (user, body photo version, garment, variant). */
+function cacheKeyFor(userId: string, bodyVersion: number, garmentId: string): Promise<string> {
+  return sha256Hex(`${userId}:${bodyVersion}:${garmentId}:${META_VARIANT}`);
+}
+
+/** Load the user's primary body photo + the garment image as data URIs (for Muse Image). */
+async function prepareInputs(
+  env: Env,
+  db: DB,
+  userId: string,
+  garment: GarmentRow,
+): Promise<{ bodyB64: string; garmentB64: string }> {
+  const profile = await db.select().from(schema.userProfiles).where(eq(schema.userProfiles.userId, userId)).get();
+  if (!profile || !profile.primaryPhotoId) throw new TryonError('no_body_photo', 'Upload a body photo first.');
+  const photo = await db.select().from(schema.userPhotos).where(eq(schema.userPhotos.id, profile.primaryPhotoId)).get();
+  if (!photo) throw new TryonError('no_body_photo', 'Primary photo missing.');
+  const bodyObj = await env.BUCKET.get(photo.r2Key);
+  if (!bodyObj) throw new TryonError('no_body_photo', 'Body photo bytes missing.');
+  return {
+    bodyB64: dataUri(await bodyObj.arrayBuffer(), 'image/webp'),
+    garmentB64: await fetchImageAsDataUri(garment.sourceImageUrl),
+  };
+}
+
+function doneResult(row: ResultRow): TryonResult {
+  return {
+    id: row.id,
+    status: 'done',
+    resultUrl: row.resultR2Key ? imageUrl(row.resultR2Key) : undefined,
+    cached: false,
+    latencyMs: row.latencyMs ?? undefined,
+  };
+}
+
+export async function runTryon(
+  env: Env,
+  db: DB,
+  ctx: { userId: string; tenantId: string },
+  garmentImageUrl: string,
+  pageUrl: string,
+  productRef?: string,
+  category?: string,
+  batchId?: string,
+): Promise<TryonOutcome> {
+  const profile = await db.select().from(schema.userProfiles).where(eq(schema.userProfiles.userId, ctx.userId)).get();
+  if (!profile || !profile.primaryPhotoId) throw new TryonError('no_body_photo', 'Upload a body photo first.');
+
+  const garment = await resolveGarment(db, ctx.tenantId, garmentImageUrl, pageUrl, productRef, category);
+  const cacheKey = await cacheKeyFor(ctx.userId, profile.bodyVersion, garment.id);
+
+  const cached = await db.select().from(schema.tryonResults).where(eq(schema.tryonResults.cacheKey, cacheKey)).get();
+  if (cached && cached.status === 'done' && cached.resultR2Key) {
+    await logUsage(db, ctx.tenantId, ctx.userId, 'cache_hit', { garmentId: garment.id });
+    return { garmentId: garment.id, result: { ...doneResult(cached), cached: true } };
+  }
+
+  const { bodyB64, garmentB64 } = await prepareInputs(env, db, ctx.userId, garment);
+
+  // 1 credit per new generation (cache hits above are free). Refunded if it never produces an image.
+  if (!(await chargeCredit(db, ctx.userId))) throw new TryonError('no_credits', 'Out of credits.');
+
+  // Muse Image: one synchronous call returns the finished image (~10–15 s).
+  let gen: Awaited<ReturnType<typeof metaTryon>>;
+  try {
+    gen = await metaTryon(env, bodyB64, garmentB64);
+  } catch (e) {
+    await refundCredit(db, ctx.userId);
+    if (e instanceof MetaBlockedError) throw new TryonError('content_blocked', e.message);
+    throw e;
+  }
+  const webp = gen.contentType.includes('webp') ? gen.bytes : toWebp(gen.bytes);
+  const resultKey = `results/${ctx.tenantId}/${ctx.userId}/${garment.imageHash}/${profile.bodyVersion}-${META_VARIANT}.webp`;
+  await env.BUCKET.put(resultKey, webp, { httpMetadata: { contentType: 'image/webp' } });
+
+  const id = cached?.id ?? newId('try');
+  const rec = {
+    id,
+    userId: ctx.userId,
+    garmentId: garment.id,
+    bodyVersion: profile.bodyVersion,
+    cacheKey,
+    status: 'done',
+    resultR2Key: resultKey,
+    modelUsed: META_IMAGE_MODEL,
+    latencyMs: gen.latencyMs,
+    costUsd: META_COST_USD,
+    error: null,
+    createdAt: Date.now(),
+    variant: META_VARIANT,
+    batchId: batchId ?? null,
+  };
+  if (cached) await db.update(schema.tryonResults).set(rec).where(eq(schema.tryonResults.id, cached.id)).run();
+  else await db.insert(schema.tryonResults).values(rec).run();
+
+  await logUsage(db, ctx.tenantId, ctx.userId, 'cache_miss', {
+    garmentId: garment.id,
+    latencyMs: gen.latencyMs,
+    costUsd: META_COST_USD,
+  });
+
+  return {
+    garmentId: garment.id,
+    result: { id, status: 'done', resultUrl: imageUrl(resultKey), cached: false, latencyMs: gen.latencyMs },
+  };
+}
+
+/** Status endpoint helper: load a result by id. */
+export async function getTryonById(db: DB, id: string): Promise<TryonResult | null> {
+  const row = await db.select().from(schema.tryonResults).where(eq(schema.tryonResults.id, id)).get();
+  if (!row) return null;
+  if (row.status === 'done' && row.resultR2Key) return doneResult(row);
+  return { id: row.id, status: row.status as TryonStatus, cached: false, error: row.error ?? undefined };
+}
+
+/** Cache-only: return already-generated try-ons for the given garment image URLs (never generates). */
+export async function lookupResults(
+  db: DB,
+  ctx: { userId: string; tenantId: string },
+  garmentImageUrls: string[],
+): Promise<Array<{ garmentImageUrl: string; resultUrl: string }>> {
+  const profile = await db.select().from(schema.userProfiles).where(eq(schema.userProfiles.userId, ctx.userId)).get();
+  if (!profile?.primaryPhotoId) return [];
+  const out: Array<{ garmentImageUrl: string; resultUrl: string }> = [];
+  for (const url of garmentImageUrls) {
+    const imageHash = await sha256Hex(url);
+    const g = await db
+      .select()
+      .from(schema.garments)
+      .where(and(eq(schema.garments.tenantId, ctx.tenantId), eq(schema.garments.imageHash, imageHash)))
+      .get();
+    if (!g) continue;
+    const cacheKey = await cacheKeyFor(ctx.userId, profile.bodyVersion, g.id);
+    const tr = await db.select().from(schema.tryonResults).where(eq(schema.tryonResults.cacheKey, cacheKey)).get();
+    if (tr?.status === 'done' && tr.resultR2Key) out.push({ garmentImageUrl: url, resultUrl: imageUrl(tr.resultR2Key) });
+  }
+  return out;
+}

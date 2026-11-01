@@ -1,0 +1,21 @@
+{
+  "name": "@aida/sdk",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite build --watch",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@aida/core-widget": "workspace:*",
+    "@aida/shared": "workspace:*",
+    "preact": "^10.25.4"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.10.1",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.7"
+  }
+}

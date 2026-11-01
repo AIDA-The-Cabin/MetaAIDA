@@ -1,0 +1,22 @@
+:root {
+  --cabin-bg-base: #0B0C0E;
+  --cabin-bg-surface: #131519;
+  --cabin-bg-elevated: #1B1E24;
+  --cabin-bg-inset: #08090A;
+  --cabin-border: #2A2E35;
+  --cabin-border-gold: rgba(201, 162, 75, 0.35);
+  --cabin-gold-900: #6E551C;
+  --cabin-gold-700: #9C7A2E;
+  --cabin-gold-500: #C9A24B;
+  --cabin-gold-300: #E7C977;
+  --cabin-gold-100: #F8ECC6;
+  --cabin-text-hi: #F4F2ED;
+  --cabin-text-mid: #B9BBC0;
+  --cabin-text-low: #7E828B;
+  --cabin-shine: linear-gradient(135deg, #9C7A2E 0%, #E7C977 25%, #F8ECC6 50%, #E7C977 75%, #9C7A2E 100%);
+  --cabin-gold-button: linear-gradient(180deg, #E7C977, #C9A24B);
+  --cabin-gold-glow: 0 0 24px rgba(201, 162, 75, 0.25);
+  --cabin-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --cabin-font-serif: 'Cormorant Garamond', 'Playfair Display', Georgia, serif;
+  --cabin-font-sans: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}

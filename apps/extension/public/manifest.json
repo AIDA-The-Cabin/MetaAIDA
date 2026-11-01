@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "The Cabin — Virtual Try-On",
+  "version": "0.3.0",
+  "description": "See clothes on your own body, on any fashion site.",
+  "action": { "default_popup": "popup.html", "default_title": "The Cabin" },
+  "permissions": ["storage"],
+  "content_scripts": [
+    {
+      "matches": ["*://*.fashiondays.ro/*", "*://localhost/*", "*://127.0.0.1/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "host_permissions": ["*://*.fashiondays.ro/*", "https://metaaida.pages.dev/*"]
+}

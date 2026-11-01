@@ -1,0 +1,5 @@
+name = "metaaida"
+main = "src/pages-entry.ts"
+account_id = "384eff220d3a3e18b3fa250bef0cfd77"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]

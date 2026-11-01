@@ -1,0 +1,63 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout>
+  <section class="hero">
+    <p class="eyebrow" data-i18n="hero.eyebrow">AI VIRTUAL TRY-ON</p>
+    <h1 class="hero-title" data-i18n-html="hero.title">See clothes <em>on you</em>,<br />not on a model.</h1>
+    <p class="hero-sub" data-i18n="hero.sub">
+      The Cabin shows you how any fashion product looks worn by you — in seconds, on any store.
+    </p>
+    <div class="hero-cta">
+      <a class="btn-gold" href="/profile" data-i18n="hero.cta1">&#10696;&nbsp; Create your profile</a>
+      <a class="btn-ghost" href="#how" data-i18n="hero.cta2">How it works</a>
+      <a class="btn-ghost" href="#extension" data-i18n="hero.cta3">&#10515;&nbsp; Get the extension</a>
+    </div>
+  </section>
+
+  <hr class="gold-hr" />
+
+  <section class="section wrap" id="how">
+    <h2 class="section-title" data-i18n="steps.title">Three steps</h2>
+    <p class="section-sub" data-i18n="steps.sub">From a photo to “I see you wearing it.”</p>
+    <div class="grid3">
+      <div class="card"><div class="ic">&#10112;</div><h3 data-i18n="s1.t">Upload your photo</h3><p data-i18n="s1.d">One full-body photo. It stays yours, secured.</p></div>
+      <div class="card"><div class="ic">&#10113;</div><h3 data-i18n="s2.t">“Try it on”</h3><p data-i18n="s2.d">On any product, the button appears right next to “Add to cart”.</p></div>
+      <div class="card"><div class="ic">&#10114;</div><h3 data-i18n="s3.t">See yourself wearing it</h3><p data-i18n="s3.d">In seconds — and the look stays saved in your Cabin.</p></div>
+    </div>
+  </section>
+
+  <section class="section wrap">
+    <h2 class="section-title" data-i18n="forms.title">Three forms, one engine</h2>
+    <p class="section-sub" data-i18n="forms.sub">For shoppers, for stores and for independent designers.</p>
+    <div class="grid3">
+      <div class="card"><div class="ic">&#10515;</div><h3 data-i18n="ext.t">Browser extension</h3><p data-i18n="ext.d">For shoppers — works on any fashion site, straight from the browser, with no work needed from the store.</p><a class="card-link" href="#extension" data-i18n="ext.cta">Get the extension ↓</a></div>
+      <div class="card"><div class="ic">&#10209;</div><h3 data-i18n="sdk.t">SDK for stores</h3><p data-i18n="sdk.d">One line of code. Loads after the page, with zero impact on speed or SEO. On every device, including iPhone.</p><a class="card-link" href="https://metaaida-shop-demo.pages.dev" target="_blank" rel="noopener" data-i18n="sdk.cta">Live example: demo store ↗</a></div>
+      <div class="card card-soon" aria-disabled="true"><span class="soon-badge" data-i18n="mkt.badge">Planned</span><div class="ic">&#9638;</div><h3 data-i18n="mkt.t">Marketplace</h3><p data-i18n="mkt.d">For small businesses and independent fashion designers: they list their pieces on our marketplace, where every shopper sees themselves as the model.</p></div>
+    </div>
+  </section>
+
+  <section class="section wrap" id="extension">
+    <h2 class="section-title" data-i18n="dl.title">Get the extension</h2>
+    <p class="section-sub" data-i18n="dl.sub">For Chrome, Edge, Brave and other Chromium browsers, on desktop.</p>
+    <div class="dl">
+      <div class="card dl-card">
+        <div class="ic">&#10515;</div>
+        <h3 data-i18n="dl.name">The Cabin for Chrome</h3>
+        <p data-i18n="dl.note">Not in the Chrome Web Store yet, so it installs by hand, in four steps.</p>
+        <a class="btn-gold" href="/downloads/the-cabin-extension.zip" download="the-cabin-extension.zip" data-i18n="dl.btn">&#10515;&nbsp; Download the extension</a>
+        <span class="dl-meta">v0.3.0 · ZIP · 29 KB</span>
+      </div>
+      <div class="card">
+        <ol class="dl-steps">
+          <li data-i18n-html="dl.s1">Unzip the downloaded file.</li>
+          <li data-i18n-html="dl.s2">Open <code>chrome://extensions</code> (in Edge: <code>edge://extensions</code>).</li>
+          <li data-i18n-html="dl.s3">Turn on <b>Developer mode</b>.</li>
+          <li data-i18n-html="dl.s4">Click <b>Load unpacked</b> and choose the unzipped folder.</li>
+        </ol>
+        <p class="dl-done" data-i18n-html="dl.done">Then open any product page on <b>fashiondays.ro</b>: the gold <b>Try it on</b> button appears right under <b>Adaugă în coș</b> (Add to cart).</p>
+      </div>
+    </div>
+  </section>
+</Layout>

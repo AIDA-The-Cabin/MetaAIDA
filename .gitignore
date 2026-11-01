@@ -1,0 +1,26 @@
+node_modules/
+dist/
+dist-extension/
+.output/
+.wrangler/
+.turbo/
+.astro/
+*.tsbuildinfo
+
+# secrets — never commit
+.dev.vars
+.env
+*.local
+
+# screenshots / probe output written by scripts/
+shots/
+
+# build artifacts (worker bundles, packaged extension) — any location
+pages-build/
+pages-build2/
+pages-dist/
+pages-deploy/dist/
+*.zip
+
+.DS_Store
+Thumbs.db

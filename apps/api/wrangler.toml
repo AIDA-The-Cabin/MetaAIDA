@@ -1,0 +1,18 @@
+name = "metaaida-api"
+main = "src/index.ts"
+account_id = "384eff220d3a3e18b3fa250bef0cfd77"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "metaaida"
+database_id = "82f8d3cc-70d3-4b8e-b71a-8ebfa96b41db"
+migrations_dir = "migrations"
+
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "metaaida"
+
+[vars]
+ENVIRONMENT = "development"

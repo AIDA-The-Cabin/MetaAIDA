@@ -1,0 +1,16 @@
+name = "metaaida"
+pages_build_output_dir = "dist"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "metaaida"
+database_id = "82f8d3cc-70d3-4b8e-b71a-8ebfa96b41db"
+
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "metaaida"
+
+[vars]
+ENVIRONMENT = "development"

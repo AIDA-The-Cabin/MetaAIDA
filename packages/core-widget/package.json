@@ -1,0 +1,23 @@
+{
+  "name": "@aida/core-widget",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "dev": "vite --port 5280 --strictPort",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@aida/shared": "workspace:*",
+    "@preact/signals": "^1.3.1",
+    "preact": "^10.25.4"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.10.1",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.7"
+  }
+}
