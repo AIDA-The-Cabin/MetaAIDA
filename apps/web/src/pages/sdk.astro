@@ -220,7 +220,8 @@ img-src     ${ORIGIN} data: blob:;`;
   .doc p.note { font-size: 14px; margin-top: 14px; }
   .doc b { color: var(--cabin-text-hi); font-weight: 600; }
   .doc code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; color: var(--cabin-gold-100);
-    background: var(--cabin-bg-inset); border: 1px solid var(--cabin-border); border-radius: 6px; padding: 1px 6px; }
+    background: var(--cabin-bg-inset); border: 1px solid var(--cabin-border); border-radius: 6px; padding: 1px 6px;
+    overflow-wrap: anywhere; }
   .code { position: relative; background: var(--cabin-bg-inset); border: 1px solid var(--cabin-border-gold); border-radius: 12px; margin: 0 0 6px; }
   .code pre { margin: 0; padding: 18px 20px; overflow-x: auto; }
   .code pre code { background: none; border: none; padding: 0; font-size: 13.5px; line-height: 1.6; color: var(--cabin-gold-100); white-space: pre; }
@@ -252,7 +253,7 @@ img-src     ${ORIGIN} data: blob:;`;
     tr { padding: 12px 14px; border-top: 1px solid var(--cabin-border); }
     tbody tr:first-child { border-top: none; }
     td { border: none; padding: 2px 0; }
-    td:first-child { margin-bottom: 4px; }
+    td:first-child { margin-bottom: 4px; white-space: normal; }
     td[data-label]::before { content: attr(data-label) ": "; color: var(--cabin-text-low); }
     .code pre { padding: 16px 14px; padding-right: 14px; padding-top: 42px; }
   }
