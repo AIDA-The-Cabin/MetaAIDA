@@ -24,17 +24,34 @@
       .credits-l { font-size: 11px; letter-spacing: .2em; text-transform: uppercase; color: #B9BBC0; }
       .credits-v { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 22px; line-height: 1; background: linear-gradient(135deg,#9C7A2E,#E7C977,#F8ECC6,#E7C977,#9C7A2E); -webkit-background-clip: text; background-clip: text; color: transparent; }
       .hint { font-size: 11px; color: #7E828B; margin-top: 14px; line-height: 1.6; }
+      .av { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; flex: none; border: 1px solid #2A2E35; background: #08090A; }
+      .av.empty { display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: #E7C977; }
+      .opt.sel .av { border-color: #C9A24B; }
+      .manage { display: inline-block; font-size: 12px; color: #E7C977; text-decoration: none; margin: 0 0 4px; }
+      .manage:hover { color: #F8ECC6; }
+      .brandrow { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+      .brandrow .s { margin-bottom: 0; }
+      .logo { width: 36px; height: 36px; flex: none; }
     </style>
   </head>
   <body>
     <div class="credits"><span class="credits-l">Credits</span><strong class="credits-v" id="credits">—</strong></div>
-    <p class="t">The Cabin</p>
-    <p class="s">virtual try-on</p>
+    <div class="brandrow">
+      <img class="logo" src="icons/mark-96.png" alt="" />
+      <div>
+        <p class="t">The Cabin</p>
+        <p class="s">virtual try-on</p>
+      </div>
+    </div>
 
     <div class="row">
       <span class="lab" id="lab">On</span>
       <div class="sw on" id="sw"><div class="kn"></div></div>
     </div>
+
+    <p class="cap" style="margin-top: 16px;">Profile</p>
+    <div id="profiles"><p class="hint" style="margin: 0 0 8px;">Loading…</p></div>
+    <a class="manage" href="https://metaaida.pages.dev/profile" target="_blank" rel="noopener">Manage profiles ↗</a>
 
     <p class="cap" style="margin-top: 16px;">Scope</p>
     <div class="opt" data-scope="image"><span class="dot"></span><span class="nm">Individual</span><span class="meta">this image</span></div>

@@ -11,6 +11,10 @@ const { title = 'The Cabin — AI virtual try-on' } = Astro.props;
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content="The Cabin shows you how clothes look worn by you — AI virtual try-on." />
     <title>{title}</title>
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -20,9 +24,9 @@ const { title = 'The Cabin — AI virtual try-on' } = Astro.props;
   </head>
   <body>
     <nav class="nav">
-      <a class="wordmark" href="/" data-i18n="nav.brand">The Cabin</a>
+      <a class="brand-link" href="/"><img class="brand-mark" src="/brand/mark-96.png" alt="" width="36" height="36" /><span class="wordmark" data-i18n="nav.brand">The Cabin</span></a>
       <div class="nav-links">
-        <a href="/profile" data-i18n="nav.profile">Profile</a>
+        <a href="/profile" class="nav-profile"><span class="nav-av" id="nav-av" style="display:none" aria-hidden="true"></span><span id="nav-name" data-i18n="nav.profile">Profile</span></a>
         <a href="/dashboard" data-i18n="nav.dashboard">Dashboard</a>
         <span class="lang-switch"><button data-lang="en">EN</button><span>|</span><button data-lang="ro">RO</button></span>
       </div>
@@ -65,12 +69,30 @@ const { title = 'The Cabin — AI virtual try-on' } = Astro.props;
           'profile.photoSet': '⧉ Fotografie setată',
           'profile.noPhotoShort': 'Fără poză', 'profile.noPhoto': 'Încă nu ai o fotografie — încarc-o ca să începi probele.',
           'profile.height': 'Înălțime (cm) — opțional', 'profile.weight': 'Greutate (kg) — opțional',
-          'profile.save': 'Salvează măsurile', 'profile.cabin': 'Cabina ta', 'profile.delete': 'Șterge datele mele',
+          'profile.save': 'Salvează profilul', 'profile.cabin': 'Cabina ta', 'profile.delete': 'Șterge datele mele',
+          'profile.name': 'Nume — opțional', 'profile.deleteOne': 'Șterge acest profil',
           'dash.title': 'Panou', 'dash.sub': 'Metrici de utilizare în timp real — exact ce vede un cumpărător la achiziție.',
         };
         const lang = localStorage.getItem('cabin-lang') || 'en';
         window.__lang = lang;
         document.documentElement.lang = lang;
+        // Who is trying clothes on: avatar + name in the nav. The profile page calls it again after edits.
+        window.__cabinNav = function () {
+          fetch('/v1/profiles').then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
+            if (!d) return;
+            var i = d.profiles.findIndex(function (p) { return p.id === d.activeId; });
+            var p = d.profiles[i]; if (!p) return;
+            var base = lang === 'ro' ? 'Profil' : 'Profile';
+            var label = (p.name && p.name.trim()) || (d.profiles.length > 1 ? base + ' ' + (i + 1) : base);
+            var av = document.getElementById('nav-av'), nm = document.getElementById('nav-name');
+            if (nm) nm.textContent = label;
+            if (av) {
+              av.style.display = 'inline-flex';
+              av.style.backgroundImage = p.avatarUrl ? 'url("' + p.avatarUrl + '")' : 'none';
+              av.textContent = p.avatarUrl ? '' : label.charAt(0).toUpperCase();
+            }
+          }).catch(function () {});
+        };
         function apply() {
           if (lang !== 'en') {
             document.querySelectorAll('[data-i18n]').forEach(function (el) {
@@ -84,6 +106,7 @@ const { title = 'The Cabin — AI virtual try-on' } = Astro.props;
             b.classList.toggle('on', b.getAttribute('data-lang') === lang);
             b.addEventListener('click', function () { localStorage.setItem('cabin-lang', b.getAttribute('data-lang')); location.reload(); });
           });
+          window.__cabinNav(); // after the translations, so the profile name is not overwritten
         }
         if (document.readyState !== 'loading') apply();
         else document.addEventListener('DOMContentLoaded', apply);

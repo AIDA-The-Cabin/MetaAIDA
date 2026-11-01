@@ -16,6 +16,10 @@ export const strings = {
     inCabin: 'In your Cabin',
     tryAgain: 'Try again',
     remove: 'Remove',
+    tryingAs: 'Trying on as',
+    profile: 'Profile',
+    manage: 'Manage profiles ↗',
+    addPhoto: 'Add a photo ↗',
   },
   ro: {
     brand: 'Cabina',
@@ -28,9 +32,18 @@ export const strings = {
     inCabin: 'În Cabină',
     tryAgain: 'Încearcă din nou',
     remove: 'Scoate',
+    tryingAs: 'Probezi ca',
+    profile: 'Profil',
+    manage: 'Gestionează profilurile ↗',
+    addPhoto: 'Adaugă o poză ↗',
   },
 } as const;
 
 export function t() {
   return strings[lang.value];
+}
+
+/** A profile's display name — its own name, or "Profile 2" when it has none. */
+export function profileLabel(name: string | undefined, index: number): string {
+  return name?.trim() || `${t().profile} ${index + 1}`;
 }

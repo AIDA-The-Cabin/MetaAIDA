@@ -5,7 +5,7 @@ import type { CabinApi } from '../api';
 export function Widget({ api }: { api: CabinApi }) {
   return (
     <div class="cabin-ui">
-      <MarginTab />
+      <MarginTab api={api} />
       <CabinPanel api={api} />
     </div>
   );

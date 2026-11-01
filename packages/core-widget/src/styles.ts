@@ -96,6 +96,34 @@ button{font-family:inherit}
 .cabin-load-text{font-size:13px;letter-spacing:.03em}
 .cabin-err{padding:40px;text-align:center;color:#d98;font-size:13px;line-height:1.6}
 
+/* ---- logo ---- */
+.cabin-brand-row{display:flex;align-items:center;gap:10px}
+.cabin-logo{width:36px;height:36px;flex:none;display:block}
+.cabin-tab-logo{width:28px;height:28px;display:block}
+
+/* ---- who is trying clothes on: avatar + profile switcher ---- */
+.cabin-tab-av{width:26px;height:26px;border-radius:50%;object-fit:cover;border:1px solid var(--cabin-gold-500);display:block}
+.cabin-av{width:32px;height:32px;border-radius:50%;object-fit:cover;flex:none;border:1px solid var(--cabin-border-gold);background:var(--cabin-bg-inset)}
+.cabin-av-empty{display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;color:var(--cabin-gold-300)}
+.cabin-who{padding:12px 16px;border-bottom:1px solid var(--cabin-border);display:flex;flex-direction:column;gap:8px}
+.cabin-who-btn{display:flex;align-items:center;gap:11px;width:100%;background:var(--cabin-bg-elevated);border:1px solid var(--cabin-border);
+  border-radius:12px;padding:8px 12px 8px 8px;cursor:pointer;color:var(--cabin-text-hi);text-align:left;transition:border-color .2s var(--cabin-ease)}
+.cabin-who-btn:hover{border-color:var(--cabin-gold-700)}
+.cabin-who-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.cabin-who-cap{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--cabin-text-low)}
+.cabin-who-name{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cabin-who-caret{color:var(--cabin-text-low);font-size:12px}
+.cabin-who-list{display:flex;flex-direction:column;gap:6px}
+.cabin-who-opt{display:flex;align-items:center;gap:10px;width:100%;background:transparent;border:1px solid var(--cabin-border);
+  border-radius:10px;padding:6px 10px 6px 6px;cursor:pointer;color:var(--cabin-text-mid);font-size:13px;text-align:left}
+.cabin-who-opt:hover{border-color:var(--cabin-gold-700);color:var(--cabin-text-hi)}
+.cabin-who-opt.on{border-color:var(--cabin-gold-500);color:var(--cabin-text-hi)}
+.cabin-who-opt .cabin-av{width:26px;height:26px}
+.cabin-who-optname{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cabin-who-check{color:var(--cabin-gold-300)}
+.cabin-who-link{align-self:flex-start;font-size:12px;color:var(--cabin-gold-300);text-decoration:none;padding:2px}
+.cabin-who-link:hover{color:var(--cabin-gold-100)}
+
 /* ---- responsive: phones -> bottom sheet ---- */
 @media (max-width:640px){
   .cabin-panel{width:100%;max-width:100%;height:84vh;top:auto;bottom:0;border-left:none;

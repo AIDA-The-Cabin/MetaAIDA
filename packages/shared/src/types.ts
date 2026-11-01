@@ -24,13 +24,31 @@ export interface CabinItem {
 }
 
 export interface Profile {
+  id: string;
+  /** Optional name of the person in this profile. */
+  name?: string;
   displayName: string;
   hasPhoto: boolean;
   bodyVersion: number;
+  avatarUrl?: string;
   heightCm?: number;
   weightKg?: number;
   gender?: string;
   consentVersion?: string;
+}
+
+/** One person on the account. Photo, avatar, try-ons and Cabin all belong to a profile. */
+export interface ProfileSummary {
+  id: string;
+  name?: string;
+  hasPhoto: boolean;
+  /** Face-only avatar cut from the profile photo (relative URL). */
+  avatarUrl?: string;
+}
+
+export interface ProfilesResponse {
+  activeId: string;
+  profiles: ProfileSummary[];
 }
 
 /** Returned by /v1/sdk/bootstrap — tells the embedded widget how to behave on this tenant. */

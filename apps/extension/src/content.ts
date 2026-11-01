@@ -62,7 +62,10 @@ async function boot() {
 // React live to popup changes (on/off, scope) — re-mount with the new settings.
 try {
   chrome.storage?.onChanged?.addListener((changes: any, area: string) => {
-    if (area === 'local' && (changes.cabinEnabled || changes.cabinScope)) {
+    if (area !== 'local') return;
+    // Another person → every try-on on the page changes → reload the page.
+    if (changes.cabinProfileSwitch && injected) return location.reload();
+    if (changes.cabinEnabled || changes.cabinScope) {
       removeWidget();
       boot();
     }

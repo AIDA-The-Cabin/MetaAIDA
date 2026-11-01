@@ -1,4 +1,4 @@
-import type { CabinItem, TryonResult } from '@aida/shared';
+import type { CabinItem, ProfilesResponse, TryonResult } from '@aida/shared';
 
 export class CabinApi {
   constructor(private base: string) {}
@@ -56,5 +56,24 @@ export class CabinApi {
 
   async removeCabin(id: string): Promise<void> {
     await fetch(this.url('/v1/cabin/' + id), { method: 'DELETE' });
+  }
+
+  /** Everyone on the account, and who is active. */
+  async profiles(): Promise<ProfilesResponse | null> {
+    try {
+      const r = await fetch(this.url('/v1/profiles'));
+      return r.ok ? ((await r.json()) as ProfilesResponse) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  async activateProfile(id: string): Promise<void> {
+    await fetch(this.url(`/v1/profiles/${id}/activate`), { method: 'POST' });
+  }
+
+  /** The website page where profiles are created and their photos uploaded. */
+  profilePage(): string {
+    return this.url('/profile');
   }
 }

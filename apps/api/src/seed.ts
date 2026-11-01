@@ -2,9 +2,10 @@ import { eq } from 'drizzle-orm';
 import * as schema from './db/schema';
 import type { DB } from './db/client';
 import { DEFAULT_TENANT_ID, ADMIN_USER_ID } from './auth';
+import { activeProfile } from './profiles';
 import { newId, sha256Hex } from './util';
 
-export async function seed(db: DB): Promise<{ tenant: string; user: string; sdkApiKey?: string }> {
+export async function seed(db: DB): Promise<{ tenant: string; user: string; profile: string; sdkApiKey?: string }> {
   const now = Date.now();
 
   const tenant = await db.select().from(schema.tenants).where(eq(schema.tenants.id, DEFAULT_TENANT_ID)).get();
@@ -29,8 +30,8 @@ export async function seed(db: DB): Promise<{ tenant: string; user: string; sdkA
       .insert(schema.users)
       .values({ id: ADMIN_USER_ID, tenantId: DEFAULT_TENANT_ID, displayName: 'admin', status: 'active', credits: 100, createdAt: now })
       .run();
-    await db.insert(schema.userProfiles).values({ userId: ADMIN_USER_ID, bodyVersion: 0, updatedAt: now }).run();
   }
+  const profile = await activeProfile(db, ADMIN_USER_ID); // every account has at least one profile
 
   let sdkApiKey: string | undefined;
   const existingKey = await db
@@ -46,5 +47,5 @@ export async function seed(db: DB): Promise<{ tenant: string; user: string; sdkA
       .run();
   }
 
-  return { tenant: DEFAULT_TENANT_ID, user: ADMIN_USER_ID, sdkApiKey };
+  return { tenant: DEFAULT_TENANT_ID, user: ADMIN_USER_ID, profile: profile.id, sdkApiKey };
 }

@@ -32,22 +32,30 @@ export const users = sqliteTable('users', {
   deletedAt: integer('deleted_at'),
   // 1 generated image = 1 credit (cache hits are free). Decremented atomically per generation.
   credits: integer('credits').notNull().default(0),
+  // The profile (person) currently trying clothes on — used by the site, the extension and the SDK.
+  activeProfileId: text('active_profile_id'),
 });
 
-export const userProfiles = sqliteTable('user_profiles', {
-  userId: text('user_id').primaryKey(),
+// One person on the account. Credits and consent stay on the account; photo, avatar, try-ons and the
+// Cabin belong to the profile. body_version is unique across the account's profiles (see profiles.ts).
+export const profiles = sqliteTable('profiles', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull(),
+  name: text('name'),
   bodyVersion: integer('body_version').notNull().default(0),
   primaryPhotoId: text('primary_photo_id'),
+  avatarR2Key: text('avatar_r2_key'),
   heightCm: integer('height_cm'),
   weightKg: integer('weight_kg'),
   gender: text('gender'),
-  preferences: text('preferences'),
+  createdAt: integer('created_at').notNull(),
   updatedAt: integer('updated_at').notNull(),
 });
 
 export const userPhotos = sqliteTable('user_photos', {
   id: text('id').primaryKey(),
   userId: text('user_id').notNull(),
+  profileId: text('profile_id'),
   r2Key: text('r2_key').notNull(),
   isPrimary: integer('is_primary', { mode: 'boolean' }).notNull().default(false),
   status: text('status').notNull().default('ready'),
@@ -70,6 +78,7 @@ export const garments = sqliteTable('garments', {
 export const tryonResults = sqliteTable('tryon_results', {
   id: text('id').primaryKey(),
   userId: text('user_id').notNull(),
+  profileId: text('profile_id'),
   garmentId: text('garment_id').notNull(),
   bodyVersion: integer('body_version').notNull(),
   cacheKey: text('cache_key').notNull(),
@@ -89,6 +98,7 @@ export const tryonResults = sqliteTable('tryon_results', {
 export const cabinItems = sqliteTable('cabin_items', {
   id: text('id').primaryKey(),
   userId: text('user_id').notNull(),
+  profileId: text('profile_id'),
   garmentId: text('garment_id').notNull(),
   sourcePageUrl: text('source_page_url'),
   name: text('name'),

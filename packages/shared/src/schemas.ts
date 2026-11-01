@@ -25,12 +25,17 @@ export const lookupSchema = z.object({
 export type LookupRequest = z.infer<typeof lookupSchema>;
 
 export const profileUpdateSchema = z.object({
-  displayName: z.string().max(120).optional(),
+  name: z.string().max(60).optional(), // empty string clears it
   heightCm: z.number().int().min(80).max(250).optional(),
   weightKg: z.number().int().min(30).max(300).optional(),
   gender: z.enum(['female', 'male', 'other']).optional(),
 });
 export type ProfileUpdate = z.infer<typeof profileUpdateSchema>;
+
+export const profileCreateSchema = z.object({
+  name: z.string().max(60).optional(),
+});
+export type ProfileCreate = z.infer<typeof profileCreateSchema>;
 
 export const consentSchema = z.object({
   version: z.string().max(40),

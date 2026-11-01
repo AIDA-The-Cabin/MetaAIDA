@@ -6,6 +6,7 @@ import Layout from '../layouts/Layout.astro';
   <section class="section wrap" style="max-width:760px">
     <h1 class="section-title" style="text-align:left" data-i18n="profile.title">Your profile</h1>
     <p class="muted" id="hello">Loading…</p>
+    <div class="profile-chips" id="profile-chips"></div>
 
     <div class="panel" style="margin-top:20px">
       <div class="field">
@@ -14,6 +15,11 @@ import Layout from '../layouts/Layout.astro';
           <span data-i18n-html="profile.consent">I agree that my photo is processed by AI (Meta AI) only to generate the virtual try-on, per the
             <a href="#" style="color:var(--cabin-gold-300)">Privacy Policy</a>. Required before uploading.</span>
         </label>
+      </div>
+
+      <div class="field">
+        <label for="pname" data-i18n="profile.name">Name — optional</label>
+        <input type="text" id="pname" maxlength="60" autocomplete="off" />
       </div>
 
       <div class="field">
@@ -36,13 +42,14 @@ import Layout from '../layouts/Layout.astro';
         <div class="field" style="flex:1;min-width:150px"><label data-i18n="profile.height">Height (cm) — optional</label><input type="number" id="height" min="80" max="250" /></div>
         <div class="field" style="flex:1;min-width:150px"><label data-i18n="profile.weight">Weight (kg) — optional</label><input type="number" id="weight" min="30" max="300" /></div>
       </div>
-      <button class="btn-ghost" id="save-measures" data-i18n="profile.save">Save measurements</button>
+      <button class="btn-ghost" id="save-measures" data-i18n="profile.save">Save profile</button>
     </div>
 
     <h2 class="section-title" style="text-align:left;font-size:26px;margin-top:46px" data-i18n="profile.cabin">Your Cabin</h2>
     <div class="looks" id="looks"><p class="muted">…</p></div>
 
-    <div style="margin-top:42px">
+    <div class="danger-row">
+      <button class="btn-ghost" id="delete-profile" style="display:none;border-color:#5a2b2b;color:#cc8f8f" data-i18n="profile.deleteOne">Delete this profile</button>
       <button class="btn-ghost" id="delete" style="border-color:#5a2b2b;color:#cc8f8f" data-i18n="profile.delete">Delete my data</button>
     </div>
   </section>
@@ -52,16 +59,18 @@ import Layout from '../layouts/Layout.astro';
     const CONSENT_VERSION = 'v1';
     const L = (window as any).__lang || 'en';
     const T = {
-      en: { hello: (n: string, p: boolean) => `Hi, ${n}. ` + (p ? 'Your profile is ready.' : 'Upload a photo to get started.'),
+      en: { hello: (n: string, p: boolean) => (n ? `Hi, ${n}. ` : 'Hi! ') + (p ? 'Your profile is ready.' : 'Upload a photo to get started.'),
         empty: 'Nothing in your Cabin yet. Try a product from the extension or a partner store.',
         uploading: 'Uploading…', drop: 'Drop a photo here or click to choose', fail: 'Upload failed — try again',
-        consentAlert: 'Please accept processing before uploading.', confirmDel: 'Permanently delete your photo and all your try-ons?',
-        saved: 'Saved ✓', save: 'Save measurements', down: 'Worker unavailable (start @aida/api).', photoAlt: 'Your photo' },
-      ro: { hello: (n: string, p: boolean) => `Salut, ${n}. ` + (p ? 'Profilul tău e gata.' : 'Încarcă o poză pentru a începe.'),
+        consentAlert: 'Please accept processing before uploading.', confirmDel: 'Permanently delete all profiles, their photos and try-ons?',
+        saved: 'Saved ✓', save: 'Save profile', down: 'Worker unavailable (start @aida/api).', photoAlt: 'Your photo',
+        newProfile: '+ New profile', profileN: 'Profile', confirmDelOne: 'Delete this profile, its photo and its try-ons?' },
+      ro: { hello: (n: string, p: boolean) => (n ? `Salut, ${n}. ` : 'Salut! ') + (p ? 'Profilul tău e gata.' : 'Încarcă o poză pentru a începe.'),
         empty: 'Încă nimic în Cabină. Probează un produs din extensie sau de pe un magazin partener.',
         uploading: 'Se încarcă…', drop: 'Trage o poză aici sau apasă pentru a alege', fail: 'Încărcare eșuată — încearcă din nou',
-        consentAlert: 'Te rugăm să accepți procesarea înainte de încărcare.', confirmDel: 'Ștergem definitiv fotografia și toate probele tale?',
-        saved: 'Salvat ✓', save: 'Salvează măsurile', down: 'Worker indisponibil (pornește @aida/api).', photoAlt: 'Fotografia ta' },
+        consentAlert: 'Te rugăm să accepți procesarea înainte de încărcare.', confirmDel: 'Ștergem definitiv toate profilurile, cu pozele și probele lor?',
+        saved: 'Salvat ✓', save: 'Salvează profilul', down: 'Worker indisponibil (pornește @aida/api).', photoAlt: 'Fotografia ta',
+        newProfile: '+ Profil nou', profileN: 'Profil', confirmDelOne: 'Ștergem acest profil, cu poza și probele lui?' },
     }[L as 'en' | 'ro'];
 
     const $ = (s: string) => document.querySelector(s) as any;
@@ -80,7 +89,8 @@ import Layout from '../layouts/Layout.astro';
       });
     }
 
-    let displayName = 'admin';
+    let profileName = '';
+    let activeId = '';
 
     // Show the current body photo (or a clear "no photo" state) and keep the greeting in sync.
     function showPhoto(src: string | null) {
@@ -93,13 +103,51 @@ import Layout from '../layouts/Layout.astro';
       $('#photo-empty').style.display = src ? 'none' : 'block';
       $('#photo-status').style.display = src ? 'block' : 'none';
       $('#photo-missing').style.display = src ? 'none' : 'block';
-      $('#hello').textContent = T.hello(displayName, !!src);
+      $('#hello').textContent = T.hello(profileName, !!src);
+    }
+
+    // Everyone on the account as chips (face avatar + name); click one to switch, or add a new profile.
+    async function loadProfiles() {
+      try {
+        const d = await (await fetch(API + '/v1/profiles')).json();
+        const box = $('#profile-chips');
+        box.textContent = '';
+        d.profiles.forEach((p: any, i: number) => {
+          const label = (p.name && p.name.trim()) || `${T.profileN} ${i + 1}`;
+          const chip = document.createElement('button');
+          chip.className = 'pchip' + (p.id === d.activeId ? ' on' : '');
+          const av = document.createElement('span');
+          av.className = 'pchip-av';
+          if (p.avatarUrl) av.style.backgroundImage = `url("${API}${p.avatarUrl}")`;
+          else av.textContent = label.charAt(0).toUpperCase();
+          const nm = document.createElement('span');
+          nm.textContent = label;
+          chip.append(av, nm);
+          chip.addEventListener('click', async () => {
+            if (p.id === d.activeId) return;
+            await fetch(`${API}/v1/profiles/${p.id}/activate`, { method: 'POST' });
+            location.reload();
+          });
+          box.append(chip);
+        });
+        const add = document.createElement('button');
+        add.className = 'pchip pchip-new';
+        add.textContent = T.newProfile;
+        add.addEventListener('click', async () => {
+          await fetch(API + '/v1/profiles', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+          location.reload();
+        });
+        box.append(add);
+        $('#delete-profile').style.display = d.profiles.length > 1 ? 'inline-flex' : 'none';
+      } catch { /* the greeting already reports an unavailable worker */ }
     }
 
     async function loadProfile() {
       try {
         const p = await (await fetch(API + '/v1/profile')).json();
-        displayName = p.displayName;
+        profileName = p.name || '';
+        activeId = p.id;
+        $('#pname').value = p.name || '';
         $('#consent').checked = !!p.consentVersion;
         showPhoto(p.hasPhoto ? `${API}/v1/profile/photo?v=${p.bodyVersion}` : null);
         if (p.heightCm) $('#height').value = p.heightCm;
@@ -121,7 +169,13 @@ import Layout from '../layouts/Layout.astro';
       $('#drop-text').textContent = T.uploading;
       const blob = await resize(file);
       const r = await fetch(API + '/v1/profile/photo', { method: 'POST', headers: { 'Content-Type': 'image/webp' }, body: blob });
-      if (r.ok) { $('#drop-text').textContent = T.drop; showPhoto(URL.createObjectURL(blob)); loadLooks(); }
+      if (r.ok) {
+        $('#drop-text').textContent = T.drop;
+        showPhoto(URL.createObjectURL(blob));
+        loadLooks();
+        loadProfiles(); // the new photo brings a new face avatar
+        (window as any).__cabinNav?.();
+      }
       else { $('#drop-text').textContent = T.fail; }
     }
     $('#drop').addEventListener('click', () => $('#file').click());
@@ -139,9 +193,19 @@ import Layout from '../layouts/Layout.astro';
       if (file && file.type.startsWith('image/')) upload(file);
     });
     $('#save-measures').addEventListener('click', async () => {
-      await fetch(API + '/v1/profile', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ heightCm: Number($('#height').value) || undefined, weightKg: Number($('#weight').value) || undefined }) });
+      const name = String($('#pname').value || '').trim();
+      await fetch(API + '/v1/profile', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, heightCm: Number($('#height').value) || undefined, weightKg: Number($('#weight').value) || undefined }) });
+      profileName = name;
+      $('#hello').textContent = T.hello(profileName, $('#photo-img').style.display === 'block');
+      loadProfiles();
+      (window as any).__cabinNav?.();
       $('#save-measures').textContent = T.saved;
       setTimeout(() => ($('#save-measures').textContent = T.save), 1500);
+    });
+    $('#delete-profile').addEventListener('click', async () => {
+      if (!activeId || !confirm(T.confirmDelOne)) return;
+      await fetch(`${API}/v1/profiles/${activeId}`, { method: 'DELETE' });
+      location.reload();
     });
     $('#delete').addEventListener('click', async () => {
       if (!confirm(T.confirmDel)) return;
@@ -149,6 +213,6 @@ import Layout from '../layouts/Layout.astro';
       location.reload();
     });
 
-    loadProfile(); loadLooks();
+    loadProfile(); loadProfiles(); loadLooks();
   </script>
 </Layout>

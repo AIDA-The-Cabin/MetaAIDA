@@ -6,6 +6,7 @@ import type { Env } from './env';
 import { newId, sha256Hex, dataUri, fetchImageAsDataUri, encodeKey } from './util';
 import { metaTryon, MetaBlockedError, META_IMAGE_MODEL, META_COST_USD, META_VARIANT } from './meta';
 import { chargeCredit, refundCredit } from './credits';
+import { activeProfile, type ProfileRow } from './profiles';
 import { PhotonImage } from '@cf-wasm/photon';
 
 /** Muse Image is asked for WebP; anything else is converted before it lands in R2. */
@@ -92,25 +93,25 @@ export async function resolveGarment(
 export interface TryonOutcome {
   result: TryonResult;
   garmentId: string;
+  profileId: string;
 }
 
 type GarmentRow = typeof schema.garments.$inferSelect;
 type ResultRow = typeof schema.tryonResults.$inferSelect;
 
-/** One cached try-on per (user, body photo version, garment, variant). */
+/** One cached try-on per (user, photo version, garment, variant). Photo versions are unique per account. */
 function cacheKeyFor(userId: string, bodyVersion: number, garmentId: string): Promise<string> {
   return sha256Hex(`${userId}:${bodyVersion}:${garmentId}:${META_VARIANT}`);
 }
 
-/** Load the user's primary body photo + the garment image as data URIs (for Muse Image). */
+/** Load the profile's current body photo + the garment image as data URIs (for Muse Image). */
 async function prepareInputs(
   env: Env,
   db: DB,
-  userId: string,
+  profile: ProfileRow,
   garment: GarmentRow,
 ): Promise<{ bodyB64: string; garmentB64: string }> {
-  const profile = await db.select().from(schema.userProfiles).where(eq(schema.userProfiles.userId, userId)).get();
-  if (!profile || !profile.primaryPhotoId) throw new TryonError('no_body_photo', 'Upload a body photo first.');
+  if (!profile.primaryPhotoId) throw new TryonError('no_body_photo', 'Upload a body photo first.');
   const photo = await db.select().from(schema.userPhotos).where(eq(schema.userPhotos.id, profile.primaryPhotoId)).get();
   if (!photo) throw new TryonError('no_body_photo', 'Primary photo missing.');
   const bodyObj = await env.BUCKET.get(photo.r2Key);
@@ -141,8 +142,8 @@ export async function runTryon(
   category?: string,
   batchId?: string,
 ): Promise<TryonOutcome> {
-  const profile = await db.select().from(schema.userProfiles).where(eq(schema.userProfiles.userId, ctx.userId)).get();
-  if (!profile || !profile.primaryPhotoId) throw new TryonError('no_body_photo', 'Upload a body photo first.');
+  const profile = await activeProfile(db, ctx.userId);
+  if (!profile.primaryPhotoId) throw new TryonError('no_body_photo', 'Upload a body photo first.');
 
   const garment = await resolveGarment(db, ctx.tenantId, garmentImageUrl, pageUrl, productRef, category);
   const cacheKey = await cacheKeyFor(ctx.userId, profile.bodyVersion, garment.id);
@@ -150,10 +151,10 @@ export async function runTryon(
   const cached = await db.select().from(schema.tryonResults).where(eq(schema.tryonResults.cacheKey, cacheKey)).get();
   if (cached && cached.status === 'done' && cached.resultR2Key) {
     await logUsage(db, ctx.tenantId, ctx.userId, 'cache_hit', { garmentId: garment.id });
-    return { garmentId: garment.id, result: { ...doneResult(cached), cached: true } };
+    return { garmentId: garment.id, profileId: profile.id, result: { ...doneResult(cached), cached: true } };
   }
 
-  const { bodyB64, garmentB64 } = await prepareInputs(env, db, ctx.userId, garment);
+  const { bodyB64, garmentB64 } = await prepareInputs(env, db, profile, garment);
 
   // 1 credit per new generation (cache hits above are free). Refunded if it never produces an image.
   if (!(await chargeCredit(db, ctx.userId))) throw new TryonError('no_credits', 'Out of credits.');
@@ -175,6 +176,7 @@ export async function runTryon(
   const rec = {
     id,
     userId: ctx.userId,
+    profileId: profile.id,
     garmentId: garment.id,
     bodyVersion: profile.bodyVersion,
     cacheKey,
@@ -199,6 +201,7 @@ export async function runTryon(
 
   return {
     garmentId: garment.id,
+    profileId: profile.id,
     result: { id, status: 'done', resultUrl: imageUrl(resultKey), cached: false, latencyMs: gen.latencyMs },
   };
 }
@@ -217,8 +220,8 @@ export async function lookupResults(
   ctx: { userId: string; tenantId: string },
   garmentImageUrls: string[],
 ): Promise<Array<{ garmentImageUrl: string; resultUrl: string }>> {
-  const profile = await db.select().from(schema.userProfiles).where(eq(schema.userProfiles.userId, ctx.userId)).get();
-  if (!profile?.primaryPhotoId) return [];
+  const profile = await activeProfile(db, ctx.userId);
+  if (!profile.primaryPhotoId) return [];
   const out: Array<{ garmentImageUrl: string; resultUrl: string }> = [];
   for (const url of garmentImageUrls) {
     const imageHash = await sha256Hex(url);

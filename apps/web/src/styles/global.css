@@ -87,6 +87,40 @@ input[type="number"], input[type="text"] { width: 100%; height: 44px; padding: 0
   border-bottom: 1px solid var(--cabin-border-gold); padding-bottom: 1px; transition: .2s var(--cabin-ease); }
 .card-link:hover { color: var(--cabin-gold-100); border-color: var(--cabin-gold-500); }
 
+/* nav: logo + wordmark */
+.brand-link { display: inline-flex; align-items: center; gap: 10px; }
+.brand-mark { width: 36px; height: 36px; flex: none; }
+
+/* nav: who is trying clothes on */
+.nav-profile { display: inline-flex; align-items: center; gap: 8px; }
+.nav-av { width: 26px; height: 26px; border-radius: 50%; flex: none; background: var(--cabin-bg-elevated) center / cover no-repeat;
+  border: 1px solid var(--cabin-border-gold); align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 600; color: var(--cabin-gold-300); }
+#nav-name { max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* phones: logo + avatar must still leave room for every nav link */
+@media (max-width: 480px) {
+  .brand-mark { width: 30px; height: 30px; }
+  .brand-link { gap: 8px; }
+  .nav-links { gap: 14px; }
+  /* the face alone says who is active; the name text only appears when there is no avatar to show */
+  .nav-av[style*="inline-flex"] + #nav-name { display: none; }
+}
+
+/* profiles on the account: face avatar + name chips */
+.profile-chips { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+.pchip { display: inline-flex; align-items: center; gap: 9px; height: 42px; padding: 0 16px 0 6px; border-radius: 999px;
+  border: 1px solid var(--cabin-border); background: var(--cabin-bg-surface); color: var(--cabin-text-mid);
+  font: inherit; font-size: 14px; cursor: pointer; transition: .2s var(--cabin-ease); }
+.pchip:hover { border-color: var(--cabin-gold-700); color: var(--cabin-text-hi); }
+.pchip.on { border-color: var(--cabin-gold-500); background: var(--cabin-bg-elevated); color: var(--cabin-text-hi); }
+.pchip-av { width: 30px; height: 30px; border-radius: 50%; flex: none; background: var(--cabin-bg-inset) center / cover no-repeat;
+  border: 1px solid var(--cabin-border-gold); display: inline-flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 600; color: var(--cabin-gold-300); }
+.pchip-new { padding: 0 16px; border-style: dashed; color: var(--cabin-gold-300); }
+.danger-row { margin-top: 42px; display: flex; flex-wrap: wrap; gap: 12px; }
+/* ghost buttons are <button>s on the profile page — no browser-default grey fill */
+button.btn-ghost { background: transparent; font-family: inherit; }
+
 /* profile photo: preview card + upload box */
 .photo-row { display: flex; gap: 20px; align-items: stretch; }
 .photo-preview { flex: none; width: 150px; aspect-ratio: 2 / 3; border-radius: 14px; overflow: hidden;

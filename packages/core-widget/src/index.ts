@@ -1,7 +1,7 @@
 import { CabinApi } from './api';
 import { mountShadow } from './mount';
 import { createCabinButton, setButtonLoading, setButtonDone, setButtonError } from './button';
-import { cabinItems, panelOpen } from './state';
+import { cabinItems, panelOpen, profiles, activeProfileId } from './state';
 import { lang, t } from './i18n';
 import { detectGallery } from './detect';
 import { registerReplacement, startReplacementObserver, photoId } from './replace';
@@ -40,6 +40,13 @@ export function mountCabin(cfg: CabinMountConfig): CabinController {
   const api = new CabinApi(cfg.apiBase);
   lang.value = cfg.lang ?? 'en';
   mountShadow(api);
+
+  // Who is trying clothes on (avatar on the tab, name + switcher in the panel).
+  void api.profiles().then((r) => {
+    if (!r) return;
+    profiles.value = r.profiles;
+    activeProfileId.value = r.activeId;
+  });
 
   // Register a generated result for an original product photo, then REPLACE it everywhere on the page
   // (and keep it replaced through navigation). No overlays — we swap the real image content.
