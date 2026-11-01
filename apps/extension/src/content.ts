@@ -66,6 +66,8 @@ async function boot() {
   scope = s.scope;
   enabled = s.enabled;
   if (!s.enabled) return removeWidget();
+  // The Cabin tab is on every page of a supported store, not only on product pages.
+  ensureCabin();
   startWatching();
   // Every page: show the try-ons this customer already has for its photos (cache-only, free).
   stopWatching ??= watchPageImages(API_BASE);

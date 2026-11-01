@@ -5,25 +5,18 @@ import { cabinItems, panelOpen, profiles, activeProfileId, pageProgress, type Pa
 import { lang, t } from './i18n';
 import { detectGallery } from './detect';
 import { registerReplacement, startReplacementObserver, photoId } from './replace';
-import { collectPageImages } from './collect';
+import { collectPageImages, revealLazyPhotos } from './collect';
 import type { CabinItem, ConvertPlan } from '@aida/shared';
 
-/** Whole-page conversion: at most this many photos generating at once (Muse Image allows 150 a minute). */
-const PAGE_CONCURRENCY = 6;
+/**
+ * Whole-page conversion: photos generating at once. Each one is its own request (one Muse Image edit,
+ * ~20–25 s), so 20 in flight ≈ 50 a minute — well under Muse Image's 150 a minute.
+ */
+const PAGE_CONCURRENCY = 20;
+/** A photo refused for rate limiting goes back in the queue this many times. */
+const MAX_REQUEUES = 2;
 
 const sleep = (ms: number) => new Promise((r) => window.setTimeout(r, ms));
-
-/** Scroll through the page once so lazy-loaded photos get their URLs, then go back to where the customer was. */
-async function revealLazyPhotos(): Promise<void> {
-  const start = window.scrollY;
-  const step = Math.max(300, Math.round(window.innerHeight * 0.8));
-  for (let y = 0; y < document.documentElement.scrollHeight; y += step) {
-    window.scrollTo({ top: y, behavior: 'instant' as ScrollBehavior });
-    await sleep(300);
-  }
-  await sleep(600);
-  window.scrollTo({ top: start, behavior: 'instant' as ScrollBehavior });
-}
 
 /** Cached try-ons for these photos (cache-only, free), in batches of 40 (the API's limit). */
 async function lookupAll(api: CabinApi, urls: string[]): Promise<Array<{ garmentImageUrl: string; resultUrl: string }>> {
@@ -35,6 +28,7 @@ async function lookupAll(api: CabinApi, urls: string[]): Promise<Array<{ garment
 /** Dry run for every large photo on the page: what is cached, what would be generated and its cost (no AI calls). */
 export async function planPage(apiBase: string): Promise<ConvertPlan> {
   const api = new CabinApi(apiBase);
+  await revealLazyPhotos();
   const urls = collectPageImages().map((p) => p.url);
   const plan: ConvertPlan = { items: [], estimateUsd: 0 };
   for (let i = 0; i < urls.length; i += 40) {
@@ -298,6 +292,7 @@ export function mountCabin(cfg: CabinMountConfig): CabinController {
         show();
 
         const todo = photos.filter((x) => !cached.has(x.url));
+        const requeues = new Map<string, number>();
         let next = 0;
         const worker = async () => {
           while (next < todo.length && !p.stopped) {
@@ -310,8 +305,17 @@ export function mountCabin(cfg: CabinMountConfig): CabinController {
               } else if (r.status === 'skipped') p.skipped++;
               else p.failed++;
             } catch (e) {
+              const msg = (e as Error).message;
+              const n = requeues.get(photo.id) ?? 0;
+              if (/\b429\b|rate.?limit|too many/i.test(msg) && n < MAX_REQUEUES) {
+                // Muse Image is busy: this photo goes to the back of the queue, this worker cools down.
+                requeues.set(photo.id, n + 1);
+                todo.push(photo);
+                await sleep(15000);
+                continue;
+              }
               p.failed++;
-              if (/credit/i.test((e as Error).message)) p.stopped = 'credits';
+              if (/credit/i.test(msg)) p.stopped = 'credits';
             }
             show();
           }

@@ -54,11 +54,14 @@ export interface GalleryImage {
 /** Content id for de-dup: the same photo at different sizes shares this. FD → res_<hash>, else path. */
 function imageDedupId(url: string): string {
   const m = url.match(/\/(res_[A-Za-z0-9]+)/) || url.match(/\/products\/[^/]+\/[^/]+\/images\/([^/?]+)/);
-  return m ? m[1] : url.split('?')[0];
+  return m ? m[1] : url.split('?')[0].replace(/\/+$/, '');
 }
-/** The path segment every photo of one product shares (FD: /products/<id>/). null = use a generic match. */
+/**
+ * The path segment every photo of one product shares, or null for a generic match.
+ * FD: /products/<id>/ · Scene7 stores (Free People, Urban Outfitters, Anthropologie): /is/image/<brand>/<style>_<colour>_
+ */
 function productSignature(url: string): string | null {
-  const m = url.match(/(\/products\/[^/]+\/)/);
+  const m = url.match(/(\/products\/[^/]+\/)/) || url.match(/(\/is\/image\/[^/]+\/\d+_\d+_)/);
   return m ? m[1] : null;
 }
 function fdArea(url: string): number {

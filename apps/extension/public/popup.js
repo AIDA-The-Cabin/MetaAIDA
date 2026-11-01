@@ -97,14 +97,14 @@ function toPage(type) {
 const NOT_HERE = 'The Cabin is not running on this page.';
 $('#plan').addEventListener('click', async () => {
   const info = $('#pageinfo');
-  info.textContent = 'Checking…';
+  info.textContent = 'Checking — scrolling through the page to find every photo…';
   const r = await toPage('cabin-plan-page');
   if (!r) return (info.textContent = NOT_HERE);
   if (r.error) return (info.textContent = r.error);
   const parts = [r.total + ' photos', r.cached + ' converted', r.todo + ' to convert', 'up to $' + r.estimateUsd.toFixed(2)];
   if (r.skip) parts.push(r.skip + ' skipped');
   if (r.unreachable) parts.push(r.unreachable + ' unreachable');
-  info.textContent = parts.join(' · ');
+  info.textContent = parts.join(' · ') + '. Photos without exactly one person are skipped before any image is made.';
 });
 $('#convert').addEventListener('click', async () => {
   const r = await toPage('cabin-convert-page');

@@ -14,7 +14,29 @@ const MIN_SIDE = 180;
 const TARGET_W = 1200;
 // Not aria-hidden: stores mark visible product pictures aria-hidden (decorative for screen readers);
 // hidden menus are dropped by size anyway.
-const SKIP_INSIDE = 'header, nav, footer, [role="navigation"], #cabin-root';
+const SKIP_INSIDE =
+  'header, nav, footer, [role="navigation"], #cabin-root, [class*="logo" i], [id*="logo" i], [class*="swatch" i]';
+// Free first pass: things that are never a person in a photo. Whether a photo really shows ONE person is
+// decided on the server (SAM 3.1), and photos without one are skipped before anything is generated.
+const NOT_A_PHOTO = /logo|icon|badge|sprite|swatch|payment|flag|placeholder|spinner|loader|qr[-_ ]?code/i;
+const MAX_RATIO = 3; // wider or taller than 3:1 → a strip or a text banner, not a photo of someone
+
+const sleep = (ms: number) => new Promise((r) => window.setTimeout(r, ms));
+
+/**
+ * Scroll through the page once so lazy-loaded photos get their URLs (many stores render a product tile's
+ * <img> only when it scrolls into view), then go back to where the customer was.
+ */
+export async function revealLazyPhotos(): Promise<void> {
+  const start = window.scrollY;
+  const step = Math.max(300, Math.round(window.innerHeight * 0.8));
+  for (let y = 0; y < document.documentElement.scrollHeight; y += step) {
+    window.scrollTo({ top: y, behavior: 'instant' as ScrollBehavior });
+    await sleep(350);
+  }
+  await sleep(700);
+  window.scrollTo({ top: start, behavior: 'instant' as ScrollBehavior });
+}
 
 interface Candidate {
   url: string;
@@ -77,8 +99,10 @@ export function collectPageImages(root: ParentNode = document): PagePhoto[] {
     if (img.closest(SKIP_INSIDE)) continue;
     const r = img.getBoundingClientRect();
     if (r.width < MIN_SIDE || r.height < MIN_SIDE) continue;
+    if (r.width / r.height > MAX_RATIO || r.height / r.width > MAX_RATIO) continue;
+    if (img.naturalWidth && Math.max(img.naturalWidth, img.naturalHeight) < 300) continue; // a thumbnail blown up
     const active = activeUrl(img);
-    if (!active) continue;
+    if (!active || NOT_A_PHOTO.test(active) || NOT_A_PHOTO.test(img.alt || '')) continue;
     const id = photoId(active);
     if (!id || out.has(id)) continue;
 

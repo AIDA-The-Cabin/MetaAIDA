@@ -90,8 +90,10 @@ async function callMeta(
   if (!env.META_KEY) throw new Error('META_KEY is not configured');
   const t0 = Date.now();
   let lastErr = 'unknown';
+  let wait = 0;
   for (let attempt = 0; attempt < 3; attempt++) {
-    if (attempt) await sleep(1500 * attempt);
+    if (attempt) await sleep(wait || 1500 * attempt + Math.random() * 1000);
+    wait = 0;
     let r: Response;
     try {
       r = await fetch(`${META_BASE}${path}`, {
@@ -111,6 +113,8 @@ async function callMeta(
       throw new MetaBlockedError(err.message ?? 'Blocked by Meta content safety.');
     }
     lastErr = `${r.status} ${err?.message ?? JSON.stringify(j).slice(0, 300)}`;
+    // Rate limited (150 images a minute): wait as long as Meta asks, up to 20 s.
+    if (r.status === 429) wait = Math.min(20, Math.max(2, Number(r.headers.get('Retry-After')) || 5)) * 1000;
     if (r.ok) continue; // completed without an image — run it again
     if (r.status !== 429 && r.status < 500) break; // our request is wrong — retrying won't help
   }

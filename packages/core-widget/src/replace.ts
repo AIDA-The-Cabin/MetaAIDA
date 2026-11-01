@@ -15,9 +15,10 @@ export function photoId(url: string): string {
   if (m) return m[1];
   try {
     const u = new URL(url, location.href);
-    return u.host + u.pathname; // strip CDN size/cache query params
+    // strip CDN size/cache query params and a trailing slash (Scene7: og:image .../x_i, gallery .../x_i/?...)
+    return u.host + u.pathname.replace(/\/+$/, '');
   } catch {
-    return url.split('?')[0];
+    return url.split('?')[0].replace(/\/+$/, '');
   }
 }
 
