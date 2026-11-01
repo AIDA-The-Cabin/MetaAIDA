@@ -16,6 +16,7 @@ dist-extension/
 shots/
 
 # build artifacts (worker bundles, packaged extension) — any location
+extension-chrome/
 pages-build/
 pages-build2/
 pages-dist/
