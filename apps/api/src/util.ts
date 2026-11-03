@@ -38,9 +38,17 @@ function imageFetch(url: string): Promise<Response> {
   return fetch(url, { headers: { 'User-Agent': UA, Referer: referer } });
 }
 
-/** Fetch a (possibly hotlink-protected) image server-side and return a base64 data URI. */
+/**
+ * Fetch a (possibly hotlink-protected) image server-side and return a base64 data URI. A store's image CDN
+ * answers 503 / 429 now and then under load: those are tried again, a little later.
+ */
 export async function fetchImageAsDataUri(url: string): Promise<string> {
-  const res = await imageFetch(url);
+  let res = await imageFetch(url);
+  for (let attempt = 1; attempt < 4 && (res.status === 429 || res.status >= 500); attempt++) {
+    await res.body?.cancel();
+    await new Promise((r) => setTimeout(r, 1500 * attempt + Math.random() * 1000));
+    res = await imageFetch(url);
+  }
   if (!res.ok) throw new Error(`garment fetch failed: ${res.status}`);
   const ct = res.headers.get('content-type') || 'image/jpeg';
   const mime = ct.startsWith('image/') ? ct.split(';')[0] : 'image/jpeg';
