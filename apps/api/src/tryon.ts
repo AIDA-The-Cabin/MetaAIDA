@@ -18,7 +18,7 @@ import { faceCloseup } from './avatar';
 import { storeScene } from './scene';
 import { chargeCredit, getCredits } from './credits';
 import { activeProfile, type ProfileRow } from './profiles';
-import { BUILD_COST_USD, QA_COST_USD, bodyBuild, checkTryon, failedChecks, nextWiden, retryNotes, type Verdict } from './quality';
+import { QA_COST_USD, checkTryon, failedChecks, retryNotes, type Verdict } from './quality';
 
 /** Generations per photo in the store's scene: the first one, then retries told what the check found wrong. */
 const SCENE_ATTEMPTS = 3;
@@ -138,21 +138,17 @@ async function prepareInputs(
  */
 async function checkedSceneTryon(
   env: Env,
-  ctx: { userId: string; tenantId: string },
-  profile: ProfileRow,
   inputs: { bodyB64: string; garmentB64: string; face: string | null; masked: string; endUser: string; people: number },
 ): Promise<{ gen: Awaited<ReturnType<typeof metaSceneTryon>> | null; reason: string; costUsd: number }> {
-  const { build, billed } = await bodyBuild(env, ctx.tenantId, ctx.userId, profile.primaryPhotoId!, inputs.bodyB64);
-  let costUsd = billed ? BUILD_COST_USD : 0;
+  let costUsd = 0;
   let notes: string[] = [];
-  let widen = 1; // the first attempt gets the store photo as it is
-  let scene = prepareScene(inputs.masked);
+  const scene = prepareScene(inputs.masked);
   let verdict: Verdict | null = null;
   let blocked = 0;
   for (let attempt = 0; attempt < SCENE_ATTEMPTS; attempt++) {
     let gen: Awaited<ReturnType<typeof metaSceneTryon>>;
     try {
-      gen = await metaSceneTryon(env, inputs.bodyB64, inputs.face, scene, inputs.endUser, { build, notes, people: inputs.people });
+      gen = await metaSceneTryon(env, inputs.bodyB64, inputs.face, scene, inputs.endUser, { notes, people: inputs.people });
     } catch (e) {
       if (!(e instanceof MetaBlockedError)) throw e;
       blocked++;
@@ -165,16 +161,13 @@ async function checkedSceneTryon(
         inputs.garmentB64,
         inputs.bodyB64,
         dataUri(gen.bytes.slice().buffer, gen.contentType),
-        build,
         inputs.people,
       );
     } catch {
       continue; // the check itself failed — this image is not kept unchecked
     }
     if (verdict.pass) return { gen, reason: '', costUsd };
-    const next = nextWiden(verdict, build, widen);
-    if (next !== widen) scene = prepareScene(inputs.masked, (widen = next));
-    notes = retryNotes(verdict, build, widen > 1);
+    notes = retryNotes(verdict);
   }
   const reason = verdict ? failedChecks(verdict) : blocked ? 'content_blocked' : 'not checked';
   return { gen: null, reason, costUsd };
@@ -252,7 +245,7 @@ export async function runTryon(
   let costUsd = META_COST_USD;
   if (scene.masked) {
     const people = Math.max(1, scene.people);
-    const out = await checkedSceneTryon(env, ctx, profile, { bodyB64, garmentB64, face, masked: scene.masked, endUser, people });
+    const out = await checkedSceneTryon(env, { bodyB64, garmentB64, face, masked: scene.masked, endUser, people });
     costUsd = out.costUsd;
     if (!out.gen) {
       const rejected = {
