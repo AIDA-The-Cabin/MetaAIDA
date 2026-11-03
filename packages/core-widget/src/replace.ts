@@ -38,15 +38,31 @@ export function photoId(url: string): string {
   }
 }
 
+/**
+ * CDN host + file name of a photo id, when the name is distinctive enough to stand for the photo: stores
+ * publish the same campaign photo under other asset paths (per region, re-uploads), same file name.
+ */
+function fileKey(id: string): string {
+  const parts = id.split('/');
+  const file = parts[parts.length - 1] ?? '';
+  return parts.length > 1 && file.length >= 8 && /[\d_-]/.test(file) ? `${parts[0]}/${file}` : '';
+}
+const byFile = new Map<string, string>(); // fileKey(original) -> our absolute result URL
+
 export function registerReplacement(originalUrl: string, ourUrl: string): void {
   const id = photoId(originalUrl);
-  if (id && ourUrl) replacements.set(id, ourUrl);
+  if (!id || !ourUrl) return;
+  replacements.set(id, ourUrl);
+  const fk = fileKey(id);
+  if (fk) byFile.set(fk, ourUrl);
 }
 
 /** Our result for whatever this URL currently points at, or undefined (also undefined for our own URLs). */
 function ourFor(url: string | null | undefined): string | undefined {
   if (!url) return undefined;
-  return replacements.get(photoId(url));
+  const id = photoId(url);
+  const fk = fileKey(id);
+  return replacements.get(id) ?? (fk ? byFile.get(fk) : undefined);
 }
 
 function firstSrcsetUrl(srcset: string | null): string | undefined {
