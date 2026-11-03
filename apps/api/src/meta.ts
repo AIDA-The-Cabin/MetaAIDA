@@ -109,6 +109,9 @@ const TOOL_SIZES = [
   { size: '1536x1024', ratio: 3 / 2 },
 ];
 
+/** Longest side a store photo is sent at. */
+const MAX_SIDE = 1536;
+
 /** Where the photo sits inside the padded image (pixels of the padded image). */
 interface PadBox {
   l: number;
@@ -164,11 +167,19 @@ export function prepareScene(maskedDataUri: string, widen = 1): PreparedScene {
   const r = d.w / d.h;
   const t = TOOL_SIZES.reduce((a, b) => (Math.abs(Math.log(b.ratio / r)) < Math.abs(Math.log(a.ratio / r)) ? b : a));
   const pad = Math.abs(Math.log(r / t.ratio)) >= 0.02;
-  if (!pad && widen <= 1) return { dataUri: maskedDataUri, size: t.size };
+  // The tool works at ~1024-1536 px: a bigger photo (a 2880 px campaign banner) is scaled down first, padding
+  // it at full size ran out of the Worker's memory and CPU.
+  const big = Math.max(d.w, d.h) > MAX_SIDE;
+  if (!pad && widen <= 1 && !big) return { dataUri: maskedDataUri, size: t.size };
   const owned: PhotonImage[] = [];
   try {
     let img = PhotonImage.new_from_byteslice(b64ToBytes(maskedDataUri.slice(maskedDataUri.indexOf(',') + 1)));
     owned.push(img);
+    if (big) {
+      const s = MAX_SIDE / Math.max(d.w, d.h);
+      img = resize(img, Math.round(d.w * s), Math.round(d.h * s), SamplingFilter.Triangle);
+      owned.push(img);
+    }
     const w = img.get_width();
     const h = img.get_height();
     if (widen > 1) {
