@@ -85,7 +85,7 @@ export async function customerVsModel(env: Env, storeDataUri: string, bodyDataUr
       { type: 'input_image', image_url: storeDataUri },
       {
         type: 'input_text',
-        text: `Compare the body build of the customer in image 1 with the store's ${model} in image 2: overall body size relative to height (shoulders, arms, torso, waist, hips, legs), scaled by head size. Loose clothes are not body. Answer: the customer is ${DIRECTION.join(', ')} than the ${model}.`,
+        text: `Compare the body build of the customer in image 1 with the store's ${model} in image 2: overall body size relative to height (shoulders, arms, torso, waist, hips, legs), scaled by head size. Loose clothes are not body: where they hide the outline, judge by the width of the shoulders, neck, wrists and hands and of the whole figure compared with the head. Answer: the customer is ${DIRECTION.join(', ')} than the ${model}.`,
       },
     ],
     'direction',
@@ -182,7 +182,7 @@ const PICK_SCHEMA = {
 // ranks them reliably — the store model's outline and an exaggerated body stand out against each other.
 const pickTask = (count: number, people: number) =>
   `The ${count} candidates are virtual try-ons of the store photo: each must show ${people > 1 ? `every one of its ${people} people as the customer of image 0` : 'the customer of image 0'} - their face and hair, and exactly their body - in the store photo's outfit, pose and scene.\n` +
-  'Compare the candidates with image 0 and with each other. Scale everything by the size of the head, so camera distance does not matter. For the body, imagine the customer of image 0 in the pose and clothes of the candidate: skin that image 0 covers must look as it would really look on that same body - not exaggerated, not slimmed. Loose clothes are not body.\n' +
+  'Compare the candidates with image 0 and with each other. Scale everything by the size of the head, so camera distance does not matter. For the body, imagine the customer of image 0 in the pose and clothes of the candidate: skin that image 0 covers must look as it would really look on that same body - not exaggerated, not slimmed. Loose clothes are not body: where they hide the outline, judge by what still shows - the width of the shoulders, neck, wrists and hands, and how wide the whole figure is compared with the head.\n' +
   'For each candidate:\n' +
   `- body: ${BODY_VS.join(', ')} than the customer${people > 1 ? ' (for the person that differs most)' : ''};\n` +
   `- body_vs_store_model: the candidate's body is ${DIRECTION.join(', ')} than the store photo's ${people > 1 ? 'models' : 'model'};\n` +
