@@ -172,9 +172,10 @@ async function checkedSceneTryon(
   // way the customer differs from it (Muse Image alone mostly kept the outline).
   const dir = inputs.dir;
   const away = directionNote(dir);
-  // Candidates stay padded until one is kept (cropping all three ran out of the Worker's CPU budget); the store
-  // photo is padded the same way for the comparison, so framing is judged like for like.
-  const judgeStore = scene.box ? prepareScene(inputs.garmentB64).dataUri : inputs.garmentB64;
+  // Candidates stay padded until one is kept (cropping all three ran out of the Worker's CPU budget). The judge
+  // sees the store photo as the candidates were drawn from it (padded, head blanked): framing is compared like
+  // for like, and decoding the original a second time (a 1440 px WebP) ran the CPU budget out on campaign banners.
+  const judgeStore = scene.dataUri;
   let last: CandidateVerdict[] = [];
   let blocked = 0;
   for (let round = 0; round < SCENE_ROUNDS; round++) {
