@@ -14,6 +14,8 @@ const META_BASE = 'https://api.meta.ai/v1';
 const SPARK_MODEL = 'muse-spark-1.3';
 /** About what one comparison costs (the customer, the store photo and three candidates, high reasoning). */
 export const PICK_COST_USD = 0.02;
+/** About what the customer-vs-store-model comparison costs (two photos, medium reasoning). */
+export const DIRECTION_COST_USD = 0.005;
 
 /** One structured answer from Muse Spark. Retries 429 / 5xx / network / unreadable answers. */
 async function spark<T>(
@@ -63,12 +65,64 @@ async function spark<T>(
   throw new Error(`Muse Spark failed: ${lastErr}`);
 }
 
+/** How the customer's build compares with the store photo's model (and a candidate's with that model). */
+const DIRECTION = ['much slimmer', 'slimmer', 'about the same', 'fuller', 'much fuller'] as const;
+export type Direction = (typeof DIRECTION)[number];
+
+/**
+ * The customer next to the store's model, from the two photos only. Compared side by side the inspector answers
+ * this consistently, and it says which way the try-on has to move away from the model's outline — for a
+ * customer of any build, without assuming one.
+ */
+export async function customerVsModel(env: Env, storeDataUri: string, bodyDataUri: string, people = 1): Promise<Direction> {
+  const model = people > 1 ? 'models' : 'model';
+  const q = await spark<{ customer_vs_model: Direction }>(
+    env,
+    [
+      { type: 'input_text', text: 'IMAGE 1 - the customer.' },
+      { type: 'input_image', image_url: bodyDataUri },
+      { type: 'input_text', text: `IMAGE 2 - a store's product photo with its ${model}.` },
+      { type: 'input_image', image_url: storeDataUri },
+      {
+        type: 'input_text',
+        text: `Compare the body build of the customer in image 1 with the store's ${model} in image 2: overall body size relative to height (shoulders, arms, torso, waist, hips, legs), scaled by head size. Loose clothes are not body. Answer: the customer is ${DIRECTION.join(', ')} than the ${model}.`,
+      },
+    ],
+    'direction',
+    { type: 'object', additionalProperties: false, required: ['customer_vs_model'], properties: { customer_vs_model: { type: 'string', enum: DIRECTION } } },
+    'medium',
+  );
+  return q.customer_vs_model;
+}
+
+/** What two of the three candidates are told when the store's model is built differently from the customer. */
+export function directionNote(dir: Direction): string | null {
+  if (dir.includes('fuller')) {
+    return "The store model in image B is slimmer than the customer: do not keep the store model's outline - redraw the figure with the customer's own fuller body exactly as image A shows it, not larger than in image A.";
+  }
+  if (dir.includes('slimmer')) {
+    return "The store model in image B is larger than the customer: do not keep the store model's outline - redraw the figure with the customer's own slimmer body exactly as image A shows it, not slimmer than in image A.";
+  }
+  return null;
+}
+
+/** A kept candidate has moved away from the store model's outline the way the customer differs from it. */
+function awayFromModel(dir: Direction, vs: Direction): boolean {
+  if (dir === 'much fuller') return vs === 'fuller' || vs === 'much fuller';
+  if (dir === 'fuller') return !vs.includes('slimmer');
+  if (dir === 'much slimmer') return vs === 'slimmer' || vs === 'much slimmer';
+  if (dir === 'slimmer') return !vs.includes('fuller');
+  return true;
+}
+
 /** How a candidate's body compares with the customer's photo. Only "the same" is kept. */
 const BODY_VS = ['much slimmer', 'slimmer', 'the same', 'larger', 'much larger'] as const;
 type BodyVs = (typeof BODY_VS)[number];
 
 export interface CandidateVerdict {
   body: BodyVs;
+  /** The candidate's body next to the store photo's model. */
+  vsModel: Direction;
   faceOk: boolean;
   anatomyOk: boolean;
   poseOk: boolean;
@@ -86,6 +140,7 @@ interface PickAnswer {
   candidates: Array<{
     number: number;
     body: BodyVs;
+    body_vs_store_model: Direction;
     face_is_customer: boolean;
     anatomy_ok: boolean;
     pose_ok: boolean;
@@ -105,10 +160,11 @@ const PICK_SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['number', 'body', 'face_is_customer', 'anatomy_ok', 'pose_ok', 'garment_ok', 'text_ok'],
+        required: ['number', 'body', 'body_vs_store_model', 'face_is_customer', 'anatomy_ok', 'pose_ok', 'garment_ok', 'text_ok'],
         properties: {
           number: { type: 'integer' },
           body: { type: 'string', enum: BODY_VS },
+          body_vs_store_model: { type: 'string', enum: DIRECTION },
           face_is_customer: { type: 'boolean' },
           anatomy_ok: { type: 'boolean' },
           pose_ok: { type: 'boolean' },
@@ -129,6 +185,7 @@ const pickTask = (count: number, people: number) =>
   'Compare the candidates with image 0 and with each other. Scale everything by the size of the head, so camera distance does not matter. For the body, imagine the customer of image 0 in the pose and clothes of the candidate: skin that image 0 covers must look as it would really look on that same body - not exaggerated, not slimmed. Loose clothes are not body.\n' +
   'For each candidate:\n' +
   `- body: ${BODY_VS.join(', ')} than the customer${people > 1 ? ' (for the person that differs most)' : ''};\n` +
+  `- body_vs_store_model: the candidate's body is ${DIRECTION.join(', ')} than the store photo's ${people > 1 ? 'models' : 'model'};\n` +
   `- face_is_customer: ${people > 1 ? 'every face and hair is' : 'the face and hair are'} the customer's;\n` +
   '- anatomy_ok: a physically possible body: head, torso, hips, legs and feet point in consistent directions, the right number of arms, hands, legs and feet, natural joints and hands;\n' +
   '- pose_ok: the same pose, facing direction, camera framing/crop and background as the store photo, not mirrored (the head angle and expression may differ; the face may show even if the store photo cut it);\n' +
@@ -136,7 +193,10 @@ const pickTask = (count: number, people: number) =>
   '- text_ok: text and graphics printed on the store photo are unchanged (true if there are none).\n' +
   'Then best: the number of the candidate closest to the customer that has no defect (0 if none).';
 
-const kept = (v: CandidateVerdict) => v.body === 'the same' && v.faceOk && v.anatomyOk && v.poseOk && v.garmentOk && v.textOk;
+// Judged only against each other, three candidates that all kept the store model's outline let the fullest of
+// them pass as "the same": a kept one must also have moved away from the model the way the customer differs.
+const kept = (v: CandidateVerdict, dir: Direction) =>
+  v.body === 'the same' && awayFromModel(dir, v.vsModel) && v.faceOk && v.anatomyOk && v.poseOk && v.garmentOk && v.textOk;
 
 /** Compare try-ons of one store photo with the customer and keep the closest one without a defect. */
 export async function pickCandidate(
@@ -144,6 +204,7 @@ export async function pickCandidate(
   storeDataUri: string,
   bodyDataUri: string,
   candidates: string[],
+  dir: Direction,
   people = 1,
 ): Promise<Pick> {
   const content: Array<Record<string, string>> = [
@@ -158,11 +219,19 @@ export async function pickCandidate(
   const verdicts: CandidateVerdict[] = candidates.map((_, i) => {
     const a = q.candidates.find((c) => c.number === i + 1);
     return a
-      ? { body: a.body, faceOk: a.face_is_customer, anatomyOk: a.anatomy_ok, poseOk: a.pose_ok, garmentOk: a.garment_ok, textOk: a.text_ok }
-      : { body: 'much slimmer', faceOk: false, anatomyOk: false, poseOk: false, garmentOk: false, textOk: false };
+      ? {
+          body: a.body,
+          vsModel: a.body_vs_store_model,
+          faceOk: a.face_is_customer,
+          anatomyOk: a.anatomy_ok,
+          poseOk: a.pose_ok,
+          garmentOk: a.garment_ok,
+          textOk: a.text_ok,
+        }
+      : { body: 'much slimmer', vsModel: 'about the same', faceOk: false, anatomyOk: false, poseOk: false, garmentOk: false, textOk: false };
   });
   let index = q.best - 1;
-  if (!(index >= 0 && index < verdicts.length && kept(verdicts[index]))) index = verdicts.findIndex(kept);
+  if (!(index >= 0 && index < verdicts.length && kept(verdicts[index], dir))) index = verdicts.findIndex((v) => kept(v, dir));
   return { index, verdicts };
 }
 
@@ -170,13 +239,13 @@ export async function pickCandidate(
  * Fixed, filter-safe instructions for the next round, from what every candidate of this round got wrong. A
  * direction for the body only when all of them missed the same way (one verdict alone was not reliable enough).
  */
-export function roundNotes(verdicts: CandidateVerdict[]): string[] {
+export function roundNotes(verdicts: CandidateVerdict[], dir: Direction): string[] {
   const n: string[] = [];
   const all = (f: (v: CandidateVerdict) => boolean) => verdicts.length > 0 && verdicts.every(f);
   const most = (f: (v: CandidateVerdict) => boolean) => verdicts.filter(f).length * 2 > verdicts.length;
-  if (all((v) => v.body.includes('slimmer'))) {
+  if (all((v) => v.body.includes('slimmer') || (dir.includes('fuller') && !awayFromModel(dir, v.vsModel)))) {
     n.push("Every attempt kept the store model's slimmer outline: draw the customer's own body exactly as image A shows it, fuller than the store model's and not larger than in image A.");
-  } else if (all((v) => v.body.includes('larger'))) {
+  } else if (all((v) => v.body.includes('larger') || (dir.includes('slimmer') && !awayFromModel(dir, v.vsModel)))) {
     n.push("Every attempt came out larger than the customer in image A: draw the customer's own body exactly as image A shows it, not larger and not slimmer.");
   }
   if (most((v) => !v.faceOk)) n.push("The face and hair must be the customer's from images A and A2.");

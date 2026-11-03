@@ -64,10 +64,10 @@ const sceneRules = (people: number) =>
 const SCENE_A = 'Image A - the customer, full body: who they are and their own body.';
 const SCENE_A2 = "Image A2 - close-up of the customer's face.";
 const SCENE_B = "Image B - the store's product photo; the store model's head is blanked out on purpose (flat box).";
-/** What failed in an earlier attempt comes back as fixed sentences (quality.ts retryNotes). */
+/** Extra fixed sentences: which way to move away from the store model, what a whole earlier round got wrong (quality.ts). */
 const sceneTask = (notes: string[], people: number) =>
   `Recreate image B with the customer from image A ${people > 1 ? 'as every person in it' : 'wearing it'}, with exactly the body of image A, following every rule.` +
-  (notes.length ? ` A previous attempt was rejected. Fix this: ${notes.join(' ')}` : '');
+  (notes.length ? ` ${notes.join(' ')}` : '');
 
 // Muse Image searches the web and runs code on its own by default; a try-on needs neither.
 const TOOLS_OFF = { enable_image_search: false, enable_web_search: false, enable_shell: false };

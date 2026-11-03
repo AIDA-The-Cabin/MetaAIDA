@@ -18,7 +18,17 @@ import { faceCloseup } from './avatar';
 import { storeScene } from './scene';
 import { chargeCredit, getCredits } from './credits';
 import { activeProfile, type ProfileRow } from './profiles';
-import { PICK_COST_USD, failedReason, pickCandidate, roundNotes, type CandidateVerdict } from './quality';
+import {
+  DIRECTION_COST_USD,
+  PICK_COST_USD,
+  customerVsModel,
+  directionNote,
+  failedReason,
+  pickCandidate,
+  roundNotes,
+  type CandidateVerdict,
+  type Direction,
+} from './quality';
 
 /**
  * Try-ons of one store photo are made a few at a time and compared with the customer side by side (quality.ts):
@@ -29,7 +39,7 @@ const SCENE_CANDIDATES = 3;
 /** A second round only when the first had no candidate to keep, told what all of them got wrong. */
 const SCENE_ROUNDS = 2;
 /** Most one photo in the store's scene can cost: every round generated and compared. */
-export const SCENE_MAX_COST_USD = SCENE_ROUNDS * (SCENE_CANDIDATES * META_COST_USD + PICK_COST_USD);
+export const SCENE_MAX_COST_USD = DIRECTION_COST_USD + SCENE_ROUNDS * (SCENE_CANDIDATES * META_COST_USD + PICK_COST_USD);
 
 export class TryonError extends Error {
   code: string;
@@ -149,12 +159,25 @@ async function checkedSceneTryon(
   let costUsd = 0;
   let notes: string[] = [];
   const scene = prepareScene(inputs.masked);
+  // Which way the customer differs from the store's model: one candidate is drawn without a hint, the others are
+  // told to move away from the model's outline that way (Muse Image alone mostly kept it).
+  let dir: Direction = 'about the same';
+  try {
+    dir = await customerVsModel(env, inputs.garmentB64, inputs.bodyB64, inputs.people);
+    costUsd += DIRECTION_COST_USD;
+  } catch {
+    /* no hint — the comparison below still rejects the model's outline only by the customer's own photo */
+  }
+  const away = directionNote(dir);
   let last: CandidateVerdict[] = [];
   let blocked = 0;
   for (let round = 0; round < SCENE_ROUNDS; round++) {
     const settled = await Promise.allSettled(
-      Array.from({ length: SCENE_CANDIDATES }, () =>
-        metaSceneTryon(env, inputs.bodyB64, inputs.face, scene, inputs.endUser, { notes, people: inputs.people }),
+      Array.from({ length: SCENE_CANDIDATES }, (_, i) =>
+        metaSceneTryon(env, inputs.bodyB64, inputs.face, scene, inputs.endUser, {
+          notes: i > 0 && away ? [...notes, away] : notes,
+          people: inputs.people,
+        }),
       ),
     );
     const gens = settled.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []));
@@ -173,6 +196,7 @@ async function checkedSceneTryon(
         inputs.garmentB64,
         inputs.bodyB64,
         gens.map((g) => dataUri(g.bytes, g.contentType)),
+        dir,
         inputs.people,
       );
     } catch {
@@ -181,7 +205,7 @@ async function checkedSceneTryon(
     costUsd += PICK_COST_USD;
     if (pick.index >= 0) return { gen: gens[pick.index], reason: '', costUsd };
     last = pick.verdicts;
-    notes = roundNotes(pick.verdicts);
+    notes = roundNotes(pick.verdicts, dir);
   }
   const reason = last.length ? failedReason(last) : blocked ? 'content_blocked' : 'not checked';
   return { gen: null, reason, costUsd };
