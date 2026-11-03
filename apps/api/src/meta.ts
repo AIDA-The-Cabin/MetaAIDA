@@ -28,21 +28,28 @@ const PROMPT_OWN_PHOTO =
   'background exactly as in image 1; change only the outfit to the garment from image 2, matching its cut, colour, ' +
   'pattern and details as closely as possible. Same framing and lighting as image 1. No text, no watermark.';
 
+// Image A is only WHO the person is: with close-up store photos (a big blanked box, a cropped body) Muse Image
+// otherwise fell back to image A's own composition — the customer's room, full body, zoomed out.
 const SCENE_A =
-  "Image A - the customer, full body. Keep this person's identity exactly: face, facial features, hair (colour, " +
-  'length, texture), skin tone, and body build and proportions.';
+  "Image A - the customer. Use it ONLY to know who the person is: face, facial features, hair (colour, length, " +
+  'texture), skin tone, and body build and proportions. Ignore everything else in image A: its background, wall, ' +
+  'floor, light, clothes, shoes, pose and framing.';
 const SCENE_A2 = "Image A2 - a close-up of the same customer's face, for an exact likeness.";
 const SCENE_B =
-  "Image B - the store's product photo. The original model's head was blanked out on purpose; take only the " +
-  'garment, the shoes, the pose, the camera framing, the background and the lighting from it.';
+  "Image B - the store's product photo. The original model's head was blanked out on purpose (the flat box). " +
+  'Everything else in image B is the target: the garment, the shoes and accessories, the pose, the camera framing ' +
+  'and crop, the background and the lighting.';
 const sceneTask = (withCloseup: boolean) =>
-  'Recreate image B as a finished, photorealistic product photo: the same garment exactly as in image B (cut, ' +
-  'colour, length, neckline and every detail), the same shoes, the same pose, the same camera framing, the same ' +
-  'background and the same lighting - worn by the customer from image A: their head, face and hair exactly as in ' +
-  `image A${withCloseup ? ' and A2' : ''}, their skin tone on the arms, hands and legs, and their own body build and ` +
-  'proportions (the garment fits their real body). Natural neck and shoulders, seamless result, no grey box. Keep ' +
-  'any text, logo or graphic that is part of image B exactly as it is (same words, font, size, colour, position ' +
-  'and layering) and add no new text or watermark.';
+  'Recreate image B as a finished, photorealistic photo with exactly the same composition as image B: the same ' +
+  'camera framing and crop - if image B is a close-up that cuts the body or the head at the edge of the frame, the ' +
+  'result is the same close-up, cut at the same place; do not zoom out and do not show more of the body than image ' +
+  'B shows - the same pose, the same background and set, the same lighting, and the same garment exactly as in ' +
+  'image B (cut, colour, length, neckline and every detail) with the same shoes and accessories. The person wearing ' +
+  `it is the customer from image A: their head, face and hair exactly as in image${withCloseup ? 's A and A2' : ' A'} ` +
+  '(placed where the box is), their skin tone on the visible skin, and their own body build and proportions (the ' +
+  "garment fits their real body). The background is always image B's, never image A's. Natural neck and shoulders, " +
+  'seamless result, no grey box. Keep any text, logo or graphic that is part of image B exactly as it is (same ' +
+  'words, font, size, colour, position and layering) and add no new text or watermark.';
 
 // Muse Image searches the web and runs code on its own by default; a try-on needs neither.
 const TOOLS_OFF = { enable_image_search: false, enable_web_search: false, enable_shell: false };
