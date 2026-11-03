@@ -211,7 +211,7 @@ export function prepareScene(maskedDataUri: string): PreparedScene {
 }
 
 /** Cut the padding back off the generated image (JPEG: photon's WebP encoder is lossless and heavy). */
-function cropBack(out: MetaImage, box: PadBox): MetaImage {
+export function cropBack(out: MetaImage, box: PadBox): MetaImage {
   try {
     const img = PhotonImage.new_from_byteslice(out.bytes);
     try {
@@ -300,7 +300,7 @@ export async function metaSceneTryon(
   faceDataUri: string | null,
   scene: PreparedScene,
   endUser: string,
-  opts: { notes?: string[]; people?: number } = {},
+  opts: { notes?: string[]; people?: number; crop?: boolean } = {},
 ): Promise<MetaImage> {
   const people = opts.people ?? 1;
   const content: Array<Record<string, string>> = [
@@ -331,5 +331,6 @@ export async function metaSceneTryon(
     const item = (j.output ?? []).find((o: any) => o.type === 'image_generation_call' && o.result);
     return { b64: item?.result, format };
   });
-  return scene.box ? cropBack(out, scene.box) : out;
+  // `crop: false`: the caller crops only the candidate it keeps (each crop decodes and re-encodes ~1.5 MP).
+  return scene.box && opts.crop !== false ? cropBack(out, scene.box) : out;
 }

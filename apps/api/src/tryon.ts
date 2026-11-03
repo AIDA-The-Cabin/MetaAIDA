@@ -8,6 +8,7 @@ import {
   metaTryon,
   metaSceneTryon,
   prepareScene,
+  cropBack,
   MetaBlockedError,
   META_IMAGE_MODEL,
   META_COST_USD,
@@ -169,6 +170,9 @@ async function checkedSceneTryon(
     /* no hint — the comparison below still rejects the model's outline only by the customer's own photo */
   }
   const away = directionNote(dir);
+  // Candidates stay padded until one is kept (cropping all three ran out of the Worker's CPU budget); the store
+  // photo is padded the same way for the comparison, so framing is judged like for like.
+  const judgeStore = scene.box ? prepareScene(inputs.garmentB64).dataUri : inputs.garmentB64;
   let last: CandidateVerdict[] = [];
   let blocked = 0;
   for (let round = 0; round < SCENE_ROUNDS; round++) {
@@ -177,6 +181,7 @@ async function checkedSceneTryon(
         metaSceneTryon(env, inputs.bodyB64, inputs.face, scene, inputs.endUser, {
           notes: i > 0 && away ? [...notes, away] : notes,
           people: inputs.people,
+          crop: false,
         }),
       ),
     );
@@ -193,7 +198,7 @@ async function checkedSceneTryon(
     try {
       pick = await pickCandidate(
         env,
-        inputs.garmentB64,
+        judgeStore,
         inputs.bodyB64,
         gens.map((g) => dataUri(g.bytes, g.contentType)),
         dir,
@@ -203,7 +208,10 @@ async function checkedSceneTryon(
       continue; // the comparison itself failed — nothing is kept unchecked
     }
     costUsd += PICK_COST_USD;
-    if (pick.index >= 0) return { gen: gens[pick.index], reason: '', costUsd };
+    if (pick.index >= 0) {
+      const g = gens[pick.index];
+      return { gen: scene.box ? cropBack(g, scene.box) : g, reason: '', costUsd };
+    }
     last = pick.verdicts;
     notes = roundNotes(pick.verdicts, dir);
   }
