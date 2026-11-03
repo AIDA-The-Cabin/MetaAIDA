@@ -44,7 +44,8 @@ export class CabinApi {
         batchId,
         sceneOnly: opts.sceneOnly || undefined,
         allPeople: opts.allPeople || undefined,
-        productUrl: opts.productUrl || undefined,
+        // optional: a link the API would refuse (over 2000 characters) must not cost the try-on itself
+        productUrl: opts.productUrl && opts.productUrl.length <= 2000 ? opts.productUrl : undefined,
         name: opts.name?.slice(0, 200) || undefined,
       }),
     });
