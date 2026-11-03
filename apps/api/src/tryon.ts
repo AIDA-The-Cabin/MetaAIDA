@@ -1,4 +1,4 @@
-import { and, eq, inArray, like, or } from 'drizzle-orm';
+import { and, eq, inArray, like, ne, or } from 'drizzle-orm';
 import { ROUTES, type TryonResult, type TryonStatus } from '@aida/shared';
 import * as schema from './db/schema';
 import type { DB } from './db/client';
@@ -272,8 +272,16 @@ export async function runTryon(
         variant,
         batchId: batchId ?? null,
       };
-      if (cached) await db.update(schema.tryonResults).set(rejected).where(eq(schema.tryonResults.id, cached.id)).run();
-      else await db.insert(schema.tryonResults).values(rejected).run();
+      // Another request for the same photo may have finished meanwhile: a rejection never replaces a kept try-on.
+      if (cached) {
+        await db
+          .update(schema.tryonResults)
+          .set(rejected)
+          .where(and(eq(schema.tryonResults.id, cached.id), ne(schema.tryonResults.status, 'done')))
+          .run();
+      } else {
+        await db.insert(schema.tryonResults).values(rejected).onConflictDoNothing({ target: schema.tryonResults.cacheKey }).run();
+      }
       await logUsage(db, ctx.tenantId, ctx.userId, 'rejected', { garmentId: garment.id, latencyMs: Date.now() - t0, costUsd });
       if (sceneOnly) return skipped('rejected');
       if (out.reason === 'content_blocked') throw new TryonError('content_blocked', 'Meta content safety refused this photo.');
@@ -314,7 +322,11 @@ export async function runTryon(
     batchId: batchId ?? null,
   };
   if (cached) await db.update(schema.tryonResults).set(rec).where(eq(schema.tryonResults.id, cached.id)).run();
-  else await db.insert(schema.tryonResults).values(rec).run();
+  else {
+    // Two requests for the same photo at once (two tabs, a retry): the kept try-on that lands last wins.
+    const { id: _id, ...latest } = rec;
+    await db.insert(schema.tryonResults).values(rec).onConflictDoUpdate({ target: schema.tryonResults.cacheKey, set: latest }).run();
+  }
 
   await logUsage(db, ctx.tenantId, ctx.userId, 'cache_miss', {
     garmentId: garment.id,
