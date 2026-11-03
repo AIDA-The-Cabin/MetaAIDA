@@ -4,6 +4,7 @@
 // whatever the prompt says. So the model's head is blanked out before the photo goes to Muse Image —
 // SAM 3.1 finds it ("head" = the whole head with the hair, "face" = where the chin ends, so the neckline
 // stays visible) and the box is filled with the colour of the backdrop around it.
+// Printed captions the box covers (campaign tiles) are put back on top of it, letter by letter.
 // Built once per product photo and kept in R2. Photos with no person in them (flat lays, packshots) are
 // marked as such; their try-on is done on the customer's own photo instead.
 // ============================================================================
@@ -12,7 +13,7 @@ import type { DB } from './db/client';
 import * as schema from './db/schema';
 import type { Env } from './env';
 import { samBoxes, SAM_COST_USD, type Box } from './sam';
-import { dataUri, newId } from './util';
+import { base64ToBytes, dataUri, newId } from './util';
 
 const MIN_CONF = 0.5;
 
@@ -57,13 +58,61 @@ function backdropColour(img: PhotonImage, x1: number, x2: number, y1: number, y2
   return n ? [Math.round(r / n), Math.round(g / n), Math.round(b / n)] : [200, 200, 200];
 }
 
+/**
+ * The letters of a printed caption inside a region: white pixels (bright and colourless — blonde highlights
+ * are bright but yellowish), else black ones, grown by one pixel for their anti-aliased edges. Only these go
+ * back over the head patch: the whole region would also bring back the store model's hair between the letters.
+ * `maxShare` keeps a white backdrop or a white garment from passing for lettering.
+ */
+function letterMask(px: Uint8Array, w: number, h: number, maxShare: number, kinds: Array<'white' | 'black'>): Uint8Array | null {
+  const n = w * h;
+  for (const kind of kinds) {
+    const on = new Uint8Array(n);
+    let count = 0;
+    for (let i = 0; i < n; i++) {
+      const r = px[i * 4];
+      const g = px[i * 4 + 1];
+      const b = px[i * 4 + 2];
+      const hi = Math.max(r, g, b);
+      const lo = Math.min(r, g, b);
+      if (kind === 'white' ? lo >= 215 && hi - lo <= 28 : hi <= 45 && hi - lo <= 20) {
+        on[i] = 1;
+        count++;
+      }
+    }
+    if (count < n * 0.01 || count > n * maxShare) continue;
+    const grown = new Uint8Array(n);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        if (!on[y * w + x]) continue;
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            const xx = x + dx;
+            const yy = y + dy;
+            if (xx >= 0 && yy >= 0 && xx < w && yy < h) grown[yy * w + xx] = 1;
+          }
+        }
+      }
+    }
+    return grown;
+  }
+  return null;
+}
+
+interface Rect {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
+
 // Only the small strips and the patch cross into JS; the photo itself stays inside photon (Worker CPU).
-function maskHeads(bytes: Uint8Array, heads: Box[], faces: Box[]): Uint8Array {
+function maskHeads(bytes: Uint8Array, heads: Box[], faces: Box[], captions: Box[] = []): Uint8Array {
   const img = PhotonImage.new_from_byteslice(bytes);
   try {
     const W = img.get_width();
     const H = img.get_height();
-    for (const h of heads) {
+    const rects: Rect[] = heads.map((h) => {
       const hw = h.x2 - h.x1;
       const hh = h.y2 - h.y1;
       // The face inside this head says where the chin is — the head box often runs down the neck.
@@ -72,10 +121,33 @@ function maskHeads(bytes: Uint8Array, heads: Box[], faces: Box[]): Uint8Array {
         const cy = (b.y1 + b.y2) / 2;
         return cx >= h.x1 && cx <= h.x2 && cy >= h.y1 && cy <= h.y2;
       });
-      const x1 = clamp(Math.round(h.x1 - hw * 0.08), 0, W - 1);
-      const x2 = clamp(Math.round(h.x2 + hw * 0.08), 0, W - 1);
-      const y1 = clamp(Math.round(h.y1 - hh * 0.08), 0, H - 1);
-      const y2 = clamp(Math.round(f ? f.y2 + hh * 0.03 : h.y1 + hh * 0.85), 0, H - 1);
+      return {
+        x1: clamp(Math.round(h.x1 - hw * 0.08), 0, W - 1),
+        x2: clamp(Math.round(h.x2 + hw * 0.08), 0, W - 1),
+        y1: clamp(Math.round(h.y1 - hh * 0.08), 0, H - 1),
+        y2: clamp(Math.round(f ? f.y2 + hh * 0.03 : h.y1 + hh * 0.85), 0, H - 1),
+      };
+    });
+    // Printed captions (campaign tiles: "TOPS UNDER $50") often sit over the model's hair: their letters stay.
+    // SAM finds most of them as "caption"; when it finds none, a head patch is searched for sparse white
+    // lettering itself (it found none on "THE PLAID SHOP", which the patch covered).
+    const regions = (
+      captions.length
+        ? captions.map((c) => ({ x1: Math.round(c.x1) - 3, y1: Math.round(c.y1) - 3, x2: Math.round(c.x2) + 3, y2: Math.round(c.y2) + 3, share: 0.45, kinds: ['white', 'black'] as Array<'white' | 'black'> }))
+        : rects.map((r) => ({ ...r, share: 0.25, kinds: ['white'] as Array<'white' | 'black'> }))
+    ).map((r) => {
+      const x1 = clamp(r.x1, 0, W - 1);
+      const y1 = clamp(r.y1, 0, H - 1);
+      const x2 = clamp(r.x2, x1 + 1, W);
+      const y2 = clamp(r.y2, y1 + 1, H);
+      const part = crop(img, x1, y1, x2, y2);
+      try {
+        return { x1, y1, w: part.get_width(), h: part.get_height(), px: part.get_raw_pixels(), share: r.share, kinds: r.kinds };
+      } finally {
+        part.free();
+      }
+    });
+    for (const { x1, y1, x2, y2 } of rects) {
       // Fill = the backdrop just left and right of the box, pasted over the head as one opaque patch.
       const [r, g, b] = backdropColour(img, x1, x2, y1, y2);
       const bw = x2 - x1 + 1;
@@ -90,6 +162,29 @@ function maskHeads(bytes: Uint8Array, heads: Box[], faces: Box[]): Uint8Array {
       const patch = new PhotonImage(fill, bw, bh);
       try {
         watermark(img, patch, BigInt(x1), BigInt(y1));
+      } finally {
+        patch.free();
+      }
+    }
+    for (const k of regions) {
+      const letters = letterMask(k.px, k.w, k.h, k.share, k.kinds);
+      if (!letters) continue;
+      const now = crop(img, k.x1, k.y1, k.x1 + k.w, k.y1 + k.h);
+      let merged: Uint8Array;
+      try {
+        merged = now.get_raw_pixels();
+      } finally {
+        now.free();
+      }
+      for (let i = 0; i < letters.length; i++) {
+        if (!letters[i]) continue;
+        merged[i * 4] = k.px[i * 4];
+        merged[i * 4 + 1] = k.px[i * 4 + 1];
+        merged[i * 4 + 2] = k.px[i * 4 + 2];
+      }
+      const patch = new PhotonImage(merged, k.w, k.h);
+      try {
+        watermark(img, patch, BigInt(k.x1), BigInt(k.y1));
       } finally {
         patch.free();
       }
@@ -120,8 +215,13 @@ export async function storeScene(
     return { masked: dataUri(await hit.arrayBuffer(), 'image/jpeg'), people };
   }
 
-  const [heads, faces] = await Promise.all([samBoxes(env, garmentDataUri, 'head'), samBoxes(env, garmentDataUri, 'face')]);
-  const billed = [heads, faces].filter((x) => x.billed).length;
+  // "caption" is the phrase SAM 3.1 finds printed labels with ("text", "letters" find nothing).
+  const [heads, faces, captions] = await Promise.all([
+    samBoxes(env, garmentDataUri, 'head'),
+    samBoxes(env, garmentDataUri, 'face'),
+    samBoxes(env, garmentDataUri, 'caption'),
+  ]);
+  const billed = [heads, faces, captions].filter((x) => x.billed).length;
   if (billed) {
     await db
       .insert(schema.usageEvents)
@@ -142,11 +242,8 @@ export async function storeScene(
   let jpeg: Uint8Array | null = null;
   if (people.length) {
     try {
-      const raw = garmentDataUri.slice(garmentDataUri.indexOf(',') + 1);
-      const bin = atob(raw);
-      const bytes = new Uint8Array(bin.length);
-      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-      jpeg = maskHeads(bytes, people, faces.boxes);
+      const bytes = base64ToBytes(garmentDataUri.slice(garmentDataUri.indexOf(',') + 1));
+      jpeg = maskHeads(bytes, people, faces.boxes, captions.boxes.filter((b) => (b.c ?? 1) >= MIN_CONF));
     } catch {
       jpeg = null; // a format photon can't read — try-on on the customer's photo instead
     }

@@ -57,7 +57,7 @@ export async function planConversion(
     }
     const reachable = await imageReachable(url);
     items.push({ url, state: reachable ? 'new' : 'unreachable' });
-    if (reachable) usd += 2 * SAM_COST_USD + SCENE_MAX_COST_USD; // head + face analysis, then (if one person) the image
+    if (reachable) usd += 3 * SAM_COST_USD + SCENE_MAX_COST_USD; // head, face and caption analysis, then (with people) the image
   }
 
   // The customer's face close-up is built once per photo, on the first try-on in a store's scene.
