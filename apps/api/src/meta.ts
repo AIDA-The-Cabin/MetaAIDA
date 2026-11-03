@@ -109,8 +109,8 @@ const TOOL_SIZES = [
   { size: '1536x1024', ratio: 3 / 2 },
 ];
 
-/** Longest side a store photo is sent at. */
-const MAX_SIDE = 1536;
+/** Longest side a store photo is sent at: the tool draws at ~1024 px, and a 1440 px banner padded to 1536 px squares ran out of CPU (twice: the scene and the store photo for the comparison). FP tiles (1046 px) pass untouched. */
+const MAX_SIDE = 1100;
 
 /** Where the photo sits inside the padded image (pixels of the padded image). */
 interface PadBox {
