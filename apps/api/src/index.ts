@@ -224,6 +224,7 @@ app.post(ROUTES.tryon, async (c) => {
       body.category,
       body.batchId,
       body.sceneOnly,
+      body.allPeople,
     );
     return c.json(out.result);
   } catch (e) {

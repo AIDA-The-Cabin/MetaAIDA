@@ -200,6 +200,22 @@ const QA_TASK =
   '- store_has_text: image 1 has text, a logo or graphics printed on top of the photo (not on the garment).\n' +
   '- problems: the concrete defects, short, empty if none.';
 
+/** The same inspection for a photo with several people: every one of them must have become the customer. */
+const qaTaskGroup = (people: number) =>
+  `Strict inspection of IMAGE 3 for a virtual try-on of a photo with ${people} people: in IMAGE 3 every one of them must be the customer of image 2 (the customer's face, hair and body size), each keeping their own outfit, pose and place from image 1. No other person may remain.\n` +
+  'Body size: look only at the bodies below the neck. Faces do not count, and loose clothes do not make a body bigger - judge the width of the shoulders, upper arms, waist, hips and legs, and how the clothes sit on them.\n' +
+  `- store_model_build and result_build: the body build of the people in image 1 and of the slimmest person in image 3 on this scale: ${BUILDS.join(', ')}.\n` +
+  '- result_vs_store: compared with the people in image 1, are the bodies in image 3 slimmer, about the same, or clearly bigger?\n' +
+  '- result_vs_customer: compared with the customer in image 2, is the slimmest body in image 3 slimmer than the customer, the same as the customer, or bigger than the customer?\n' +
+  '- store_facing and result_facing: which side of the frame the body and feet of the most prominent person in image 1 and in image 3 point to: left, right, camera (towards the viewer) or away (back to the viewer).\n' +
+  "- face_is_customer: every face and hair in image 3 is the customer's (false if any other person remains).\n" +
+  '- anatomy_ok: every body is physically possible: head, torso, hips, legs and feet point in consistent directions, the right number of arms, hands, legs and feet, natural joints and hands.\n' +
+  '- pose_ok: the same poses, places, camera framing/crop and background as image 1, not mirrored (head angles and expressions may differ; faces may be visible even if image 1 cut them).\n' +
+  '- garment_ok: every person wears the same garments as in image 1 (cut, colour, pattern, length, details).\n' +
+  '- text_ok: text and graphics printed on image 1 are unchanged in image 3 (true if there are none).\n' +
+  '- store_has_text: image 1 has text, a logo or graphics printed on top of the photo (not on the garments).\n' +
+  '- problems: the concrete defects, short, empty if none.';
+
 /**
  * The customer's size is kept when the inspector sees the customer's body, and — when the customer is fuller
  * (or slimmer) than the store model — a body clearly bigger (or slimmer) than the model's.
@@ -218,17 +234,18 @@ export async function checkTryon(
   bodyDataUri: string,
   resultDataUri: string,
   build: Build | null,
+  people = 1,
 ): Promise<Verdict> {
   const q = await spark<QaAnswer>(
     env,
     [
-      { type: 'input_text', text: 'IMAGE 1 - the store product photo (original model).' },
+      { type: 'input_text', text: `IMAGE 1 - the store product photo (original ${people > 1 ? 'models' : 'model'}).` },
       { type: 'input_image', image_url: storeDataUri },
       { type: 'input_text', text: `IMAGE 2 - the customer${build ? ` (build: ${build})` : ''}.` },
       { type: 'input_image', image_url: bodyDataUri },
       { type: 'input_text', text: 'IMAGE 3 - the virtual try-on result to inspect.' },
       { type: 'input_image', image_url: resultDataUri },
-      { type: 'input_text', text: QA_TASK },
+      { type: 'input_text', text: people > 1 ? qaTaskGroup(people) : QA_TASK },
     ],
     'qa',
     QA_SCHEMA,

@@ -8,6 +8,8 @@ export const tryonRequestSchema = z.object({
   batchId: z.string().max(80).optional(), // groups a whole-page product batch
   // Whole-page conversion: only photos with exactly one person, in the store's scene — anything else is skipped (free).
   sceneOnly: z.boolean().optional(),
+  // With sceneOnly: photos with several people too — every one of them becomes the customer.
+  allPeople: z.boolean().optional(),
 });
 export type TryonRequest = z.infer<typeof tryonRequestSchema>;
 

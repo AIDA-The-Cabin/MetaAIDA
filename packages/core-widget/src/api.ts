@@ -13,12 +13,17 @@ export class CabinApi {
     return u.startsWith('http') ? u : this.url(u);
   }
 
-  /** `sceneOnly`: whole-page conversion — photos without exactly one person come back `skipped`, free. */
-  async tryon(garmentImageUrl: string, pageUrl: string, batchId?: string, opts: { sceneOnly?: boolean } = {}): Promise<TryonResult> {
+  /** `sceneOnly`: whole-page conversion — photos without people (or, without `allPeople`, with several) come back `skipped`, free. */
+  async tryon(
+    garmentImageUrl: string,
+    pageUrl: string,
+    batchId?: string,
+    opts: { sceneOnly?: boolean; allPeople?: boolean } = {},
+  ): Promise<TryonResult> {
     const r = await fetch(this.url('/v1/tryon'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ garmentImageUrl, pageUrl, batchId, sceneOnly: opts.sceneOnly || undefined }),
+      body: JSON.stringify({ garmentImageUrl, pageUrl, batchId, sceneOnly: opts.sceneOnly || undefined, allPeople: opts.allPeople || undefined }),
     });
     const text = await r.text();
     let j = {} as TryonResult & { error?: string; detail?: string };

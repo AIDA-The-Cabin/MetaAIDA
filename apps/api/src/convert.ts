@@ -1,6 +1,6 @@
 // ============================================================================
 // Whole-page conversion, dry run: for every photo of a page, is it already converted, ready (a single
-// person was found before), not analysed yet, skipped (no person or a group) or unreachable — and what
+// person was found before), not analysed yet, skipped (no person) or unreachable — and what
 // converting the rest would cost. No AI call is made; a photo never seen before is only fetched once to
 // check that the store's CDN serves it to us.
 // ============================================================================
@@ -50,7 +50,7 @@ export async function planConversion(
     const scene = await env.BUCKET.head(sceneKey(ctx.tenantId, imageHash));
     if (scene) {
       const people = Number(scene.customMetadata?.people ?? scene.customMetadata?.person ?? 0);
-      const ready = scene.customMetadata?.person !== '0' && people === 1;
+      const ready = scene.customMetadata?.person !== '0' && people >= 1; // several people: each one becomes the customer
       items.push({ url, state: ready ? 'ready' : 'skip' });
       if (ready) usd += SCENE_MAX_COST_USD;
       continue;

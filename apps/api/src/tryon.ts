@@ -140,7 +140,7 @@ async function checkedSceneTryon(
   env: Env,
   ctx: { userId: string; tenantId: string },
   profile: ProfileRow,
-  inputs: { bodyB64: string; garmentB64: string; face: string | null; masked: string; endUser: string },
+  inputs: { bodyB64: string; garmentB64: string; face: string | null; masked: string; endUser: string; people: number },
 ): Promise<{ gen: Awaited<ReturnType<typeof metaSceneTryon>> | null; reason: string; costUsd: number }> {
   const { build, billed } = await bodyBuild(env, ctx.tenantId, ctx.userId, profile.primaryPhotoId!, inputs.bodyB64);
   let costUsd = billed ? BUILD_COST_USD : 0;
@@ -152,7 +152,7 @@ async function checkedSceneTryon(
   for (let attempt = 0; attempt < SCENE_ATTEMPTS; attempt++) {
     let gen: Awaited<ReturnType<typeof metaSceneTryon>>;
     try {
-      gen = await metaSceneTryon(env, inputs.bodyB64, inputs.face, scene, inputs.endUser, { build, notes });
+      gen = await metaSceneTryon(env, inputs.bodyB64, inputs.face, scene, inputs.endUser, { build, notes, people: inputs.people });
     } catch (e) {
       if (!(e instanceof MetaBlockedError)) throw e;
       blocked++;
@@ -160,7 +160,14 @@ async function checkedSceneTryon(
     }
     costUsd += META_COST_USD + QA_COST_USD;
     try {
-      verdict = await checkTryon(env, inputs.garmentB64, inputs.bodyB64, dataUri(gen.bytes.slice().buffer, gen.contentType), build);
+      verdict = await checkTryon(
+        env,
+        inputs.garmentB64,
+        inputs.bodyB64,
+        dataUri(gen.bytes.slice().buffer, gen.contentType),
+        build,
+        inputs.people,
+      );
     } catch {
       continue; // the check itself failed — this image is not kept unchecked
     }
@@ -193,6 +200,7 @@ export async function runTryon(
   category?: string,
   batchId?: string,
   sceneOnly = false,
+  allPeople = false,
 ): Promise<TryonOutcome> {
   const profile = await activeProfile(db, ctx.userId);
   if (!profile.primaryPhotoId) throw new TryonError('no_body_photo', 'Upload a body photo first.');
@@ -222,8 +230,9 @@ export async function runTryon(
 
   // The store's scene needs a person in the product photo; flat lays are dressed on the customer's own photo.
   const scene = await storeScene(env, db, ctx, garment, garmentB64);
-  // Whole-page conversion: only photos with exactly one person, nothing is charged for the rest.
-  if (sceneOnly && (!scene.masked || scene.people !== 1)) return skipped(scene.masked ? 'group' : 'no_person');
+  // Whole-page conversion: only photos with people in them, nothing is charged for the rest. Photos with several
+  // people only with `allPeople` (every one of them becomes the customer).
+  if (sceneOnly && (!scene.masked || (scene.people !== 1 && !allPeople))) return skipped(scene.masked ? 'group' : 'no_person');
   const variant = scene.masked ? META_SCENE_VARIANT : META_VARIANT;
   if (!scene.masked) {
     ({ cacheKey, row: cached } = await hitFor(META_VARIANT));
@@ -242,7 +251,8 @@ export async function runTryon(
   let gen: Awaited<ReturnType<typeof metaTryon>>;
   let costUsd = META_COST_USD;
   if (scene.masked) {
-    const out = await checkedSceneTryon(env, ctx, profile, { bodyB64, garmentB64, face, masked: scene.masked, endUser });
+    const people = Math.max(1, scene.people);
+    const out = await checkedSceneTryon(env, ctx, profile, { bodyB64, garmentB64, face, masked: scene.masked, endUser, people });
     costUsd = out.costUsd;
     if (!out.gen) {
       const rejected = {

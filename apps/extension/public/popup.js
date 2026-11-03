@@ -124,7 +124,7 @@ $('#plan').addEventListener('click', async () => {
   const parts = [r.total + ' photos', r.cached + ' converted', r.todo + ' to convert', 'up to $' + r.estimateUsd.toFixed(2)];
   if (r.skip) parts.push(r.skip + ' skipped');
   if (r.unreachable) parts.push(r.unreachable + ' unreachable');
-  info.textContent = parts.join(' · ') + '. Photos without exactly one person are skipped before any image is made.';
+  info.textContent = parts.join(' · ') + '. Photos without people are skipped before any image is made.';
 });
 $('#convert').addEventListener('click', async () => {
   chrome.storage.local.set({ cabinShow: true }); // converting is for seeing them

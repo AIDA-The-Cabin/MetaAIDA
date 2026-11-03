@@ -116,7 +116,7 @@ export interface CabinController {
   closePanel(): void;
   refreshCabin(): Promise<void>;
   bakePage(targets: { el: HTMLImageElement; product: CabinProductRef }[]): void;
-  /** Put the customer into every large photo on the page that shows one person (cached ones first, free). */
+  /** Put the customer into every large photo on the page that shows people, each person becoming them (cached ones first, free). */
   convertPage(): Promise<void>;
 }
 
@@ -325,7 +325,7 @@ export function mountCabin(cfg: CabinMountConfig): CabinController {
           while (next < todo.length && !p.stopped) {
             const photo = todo[next++];
             try {
-              const r = await api.tryon(photo.url, location.href, batchId, { sceneOnly: true });
+              const r = await api.tryon(photo.url, location.href, batchId, { sceneOnly: true, allPeople: true });
               if (r.status === 'done') {
                 applyOur(photo.url, r.resultUrl);
                 p.done++;

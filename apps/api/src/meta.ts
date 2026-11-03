@@ -44,9 +44,15 @@ const PROMPT_OWN_PHOTO =
 // alone left the store model's slim outline with the customer's face on it, and with the head masked the figure
 // sometimes came out mirrored or with the feet turned back — so build, anatomy and facing are spelled out. Lists
 // of body parts are left out on purpose: next to revealing garments they trip Meta's content filter.
-const sceneRules = (build: Build | null) =>
+const sceneRules = (build: Build | null, people: number) =>
   [
     'You are a virtual fitting room. You redraw a store product photo so that the customer is the person wearing the outfit. Every rule below is mandatory.',
+    // A photo with several people (a campaign, a collage) becomes all-customer: no store model may remain.
+    ...(people > 1
+      ? [
+          `GROUP - image B shows ${people} people, all with their heads blanked out. Every one of them becomes the customer: the same face, hair and body on each of them, each keeping their own place, pose, garments and framing. No other person remains.`,
+        ]
+      : []),
     "IDENTITY - the face, facial features, hair (colour, length, texture) and skin tone come only from the customer photos A and A2. Nothing of the store model's identity remains.",
     `BODY SIZE - ${build ? `the customer is ${build}. ` : ''}Draw the customer at their real size and build exactly as in image A, never slimmer. The store model in image B is a different, usually much slimmer person: do not keep the store model's outline. Shoulders, arms, torso, waist, hips and legs all take the customer's size from image A. The clothes keep their cut and are worn by that real body, fitting and folding the way they would on the customer.`,
     'ANATOMY - one physically possible person: head, shoulders, torso, hips, knees and feet all point in consistent directions, never a head or torso turned one way while the legs and feet point the other way. Two arms, two hands with five fingers each, two legs, two feet, natural joints.',
@@ -59,8 +65,8 @@ const SCENE_A = 'Image A - the customer, full body: who they are and their real 
 const SCENE_A2 = "Image A2 - close-up of the customer's face.";
 const SCENE_B = "Image B - the store's product photo; the store model's head is blanked out on purpose (flat box).";
 /** What failed in an earlier attempt comes back as fixed sentences (quality.ts retryNotes). */
-const sceneTask = (build: Build | null, notes: string[]) =>
-  `Recreate image B with the customer from image A wearing it, at the customer's real ${build ? `${build} ` : ''}size, following every rule.` +
+const sceneTask = (build: Build | null, notes: string[], people: number) =>
+  `Recreate image B with the customer from image A ${people > 1 ? 'as every person in it' : 'wearing it'}, at the customer's real ${build ? `${build} ` : ''}size, following every rule.` +
   (notes.length ? ` A previous attempt was rejected. Fix this: ${notes.join(' ')}` : '');
 
 // Muse Image searches the web and runs code on its own by default; a try-on needs neither.
@@ -293,8 +299,9 @@ export async function metaSceneTryon(
   faceDataUri: string | null,
   scene: PreparedScene,
   endUser: string,
-  opts: { build?: Build | null; notes?: string[] } = {},
+  opts: { build?: Build | null; notes?: string[]; people?: number } = {},
 ): Promise<MetaImage> {
+  const people = opts.people ?? 1;
   const content: Array<Record<string, string>> = [
     { type: 'input_text', text: SCENE_A },
     { type: 'input_image', image_url: bodyDataUri },
@@ -305,13 +312,15 @@ export async function metaSceneTryon(
   content.push(
     { type: 'input_text', text: SCENE_B },
     { type: 'input_image', image_url: scene.dataUri },
-    { type: 'input_text', text: sceneTask(opts.build ?? null, opts.notes ?? []) },
+    { type: 'input_text', text: sceneTask(opts.build ?? null, opts.notes ?? [], people) },
   );
-  const tool: Record<string, unknown> = { type: 'image_generation', output_format: 'webp', ...TOOLS_OFF };
+  // A padded photo is cropped back here: JPEG decodes far cheaper than WebP inside the Worker's CPU budget.
+  const format = scene.box ? 'jpeg' : 'webp';
+  const tool: Record<string, unknown> = { type: 'image_generation', output_format: format, ...TOOLS_OFF };
   if (scene.size) tool.size = scene.size;
   const body = {
     model: META_IMAGE_MODEL,
-    instructions: sceneRules(opts.build ?? null),
+    instructions: sceneRules(opts.build ?? null, people),
     input: [{ role: 'user', content }],
     tools: [tool],
     store: false, // nothing to continue — keep the customer's photos off Meta's response store
@@ -319,7 +328,7 @@ export async function metaSceneTryon(
   };
   const out = await callMeta(env, '/responses', body, (j) => {
     const item = (j.output ?? []).find((o: any) => o.type === 'image_generation_call' && o.result);
-    return { b64: item?.result, format: 'webp' };
+    return { b64: item?.result, format };
   });
   return scene.box ? cropBack(out, scene.box) : out;
 }

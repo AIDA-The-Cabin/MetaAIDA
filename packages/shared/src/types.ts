@@ -16,7 +16,7 @@ export interface TryonResult {
 /** One photo in a whole-page conversion dry run. */
 export interface ConvertPlanItem {
   url: string;
-  /** cached = already converted · ready = person found, will generate · new = not analysed yet · skip = no single person · unreachable = can't fetch */
+  /** cached = already converted · ready = person found, will generate · new = not analysed yet · skip = no person · unreachable = can't fetch */
   state: 'cached' | 'ready' | 'new' | 'skip' | 'unreachable';
 }
 
