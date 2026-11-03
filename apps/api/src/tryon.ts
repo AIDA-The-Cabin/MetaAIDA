@@ -18,12 +18,18 @@ import { faceCloseup } from './avatar';
 import { storeScene } from './scene';
 import { chargeCredit, getCredits } from './credits';
 import { activeProfile, type ProfileRow } from './profiles';
-import { QA_COST_USD, checkTryon, failedChecks, retryNotes, type Verdict } from './quality';
+import { PICK_COST_USD, failedReason, pickCandidate, roundNotes, type CandidateVerdict } from './quality';
 
-/** Generations per photo in the store's scene: the first one, then retries told what the check found wrong. */
-const SCENE_ATTEMPTS = 3;
-/** Most one photo in the store's scene can cost: every attempt generated and checked. */
-export const SCENE_MAX_COST_USD = SCENE_ATTEMPTS * (META_COST_USD + QA_COST_USD);
+/**
+ * Try-ons of one store photo are made a few at a time and compared with the customer side by side (quality.ts):
+ * Muse Image lands the same photo anywhere from the store model's slim outline to a body larger than the
+ * customer's, one image at a time is a lottery.
+ */
+const SCENE_CANDIDATES = 3;
+/** A second round only when the first had no candidate to keep, told what all of them got wrong. */
+const SCENE_ROUNDS = 2;
+/** Most one photo in the store's scene can cost: every round generated and compared. */
+export const SCENE_MAX_COST_USD = SCENE_ROUNDS * (SCENE_CANDIDATES * META_COST_USD + PICK_COST_USD);
 
 export class TryonError extends Error {
   code: string;
@@ -132,9 +138,9 @@ async function prepareInputs(
 }
 
 /**
- * A try-on in the store's scene that passed the quality check (quality.ts), or null with what failed in the
- * last attempt. Meta's content filter is not deterministic near its threshold (the same photo and prompt went
- * through on another try): a refusal costs nothing and takes seconds, so it only uses up an attempt.
+ * The try-on in the store's scene closest to the customer (quality.ts pickCandidate), or null with what the
+ * candidates of the last round got wrong. Meta's content filter is not deterministic near its threshold: a
+ * refused candidate costs nothing and only leaves fewer to compare.
  */
 async function checkedSceneTryon(
   env: Env,
@@ -143,33 +149,41 @@ async function checkedSceneTryon(
   let costUsd = 0;
   let notes: string[] = [];
   const scene = prepareScene(inputs.masked);
-  let verdict: Verdict | null = null;
+  let last: CandidateVerdict[] = [];
   let blocked = 0;
-  for (let attempt = 0; attempt < SCENE_ATTEMPTS; attempt++) {
-    let gen: Awaited<ReturnType<typeof metaSceneTryon>>;
-    try {
-      gen = await metaSceneTryon(env, inputs.bodyB64, inputs.face, scene, inputs.endUser, { notes, people: inputs.people });
-    } catch (e) {
-      if (!(e instanceof MetaBlockedError)) throw e;
-      blocked++;
+  for (let round = 0; round < SCENE_ROUNDS; round++) {
+    const settled = await Promise.allSettled(
+      Array.from({ length: SCENE_CANDIDATES }, () =>
+        metaSceneTryon(env, inputs.bodyB64, inputs.face, scene, inputs.endUser, { notes, people: inputs.people }),
+      ),
+    );
+    const gens = settled.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []));
+    const errors = settled.flatMap((r) => (r.status === 'rejected' ? [r.reason] : []));
+    blocked += errors.filter((e) => e instanceof MetaBlockedError).length;
+    if (!gens.length) {
+      const other = errors.find((e) => !(e instanceof MetaBlockedError));
+      if (other) throw other;
       continue;
     }
-    costUsd += META_COST_USD + QA_COST_USD;
+    costUsd += gens.length * META_COST_USD;
+    let pick;
     try {
-      verdict = await checkTryon(
+      pick = await pickCandidate(
         env,
         inputs.garmentB64,
         inputs.bodyB64,
-        dataUri(gen.bytes.slice().buffer, gen.contentType),
+        gens.map((g) => dataUri(g.bytes, g.contentType)),
         inputs.people,
       );
     } catch {
-      continue; // the check itself failed — this image is not kept unchecked
+      continue; // the comparison itself failed — nothing is kept unchecked
     }
-    if (verdict.pass) return { gen, reason: '', costUsd };
-    notes = retryNotes(verdict);
+    costUsd += PICK_COST_USD;
+    if (pick.index >= 0) return { gen: gens[pick.index], reason: '', costUsd };
+    last = pick.verdicts;
+    notes = roundNotes(pick.verdicts);
   }
-  const reason = verdict ? failedChecks(verdict) : blocked ? 'content_blocked' : 'not checked';
+  const reason = last.length ? failedReason(last) : blocked ? 'content_blocked' : 'not checked';
   return { gen: null, reason, costUsd };
 }
 

@@ -31,7 +31,7 @@ export const META_IMAGE_MODEL = 'muse-image-1.0';
 export const META_COST_USD = 0.01;
 /** Cache variants — part of the cache key and the R2 key suffix. */
 export const META_VARIANT = 'meta'; // on the customer's own photo
-export const META_SCENE_VARIANT = 'meta-scene-exact'; // in the store's scene, the customer's exact body, kept only after the quality check (quality.ts)
+export const META_SCENE_VARIANT = 'meta-scene-pick'; // in the store's scene: the closest of several candidates to the customer (quality.ts)
 
 const PROMPT_OWN_PHOTO =
   'Photorealistic virtual try-on. Image 1 is a person; image 2 shows a clothing item. Render the person from image 1 ' +
