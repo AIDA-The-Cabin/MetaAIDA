@@ -66,7 +66,11 @@ async function spark<T>(
   throw new Error(`Muse Spark failed: ${lastErr}`);
 }
 
-/** How the body in a try-on compares with the customer's own photo: only "the same" passes. */
+/**
+ * How the body in a try-on compares with the customer's own photo. "Clearly" either way fails; one step either
+ * way passes — finer than that the inspector's own judgement wavers, and the store's photo left in place is a
+ * clearly wrong body.
+ */
 const VS_CUSTOMER = ['clearly slimmer', 'slightly slimmer', 'the same', 'slightly larger', 'clearly larger'] as const;
 type VsCustomer = (typeof VS_CUSTOMER)[number];
 
@@ -189,7 +193,7 @@ export async function checkTryon(
     storeFacing: q.store_facing,
     resultFacing: q.result_facing,
     faceOk: q.face_is_customer,
-    bodyOk: q.body_vs_customer === 'the same',
+    bodyOk: !q.body_vs_customer.startsWith('clearly'),
     anatomyOk: q.anatomy_ok,
     poseOk: q.pose_ok,
     mirrored: sides.includes(q.store_facing) && sides.includes(q.result_facing) && q.store_facing !== q.result_facing,
@@ -205,9 +209,13 @@ export async function checkTryon(
 /** Fixed, filter-safe instructions for the next attempt, one per failed check. */
 export function retryNotes(v: Verdict): string[] {
   const n: string[] = [];
+  // The direction comes from what the inspector measured on this result, never from a label or a guess.
   if (!v.bodyOk) {
-    const way = v.bodyVsCustomer.includes('slimmer') ? 'slimmer' : 'larger';
-    n.push(`The body came out ${way} than the customer's in image A: draw exactly the customer's own size and proportions from image A, neither slimmer nor larger.`);
+    n.push(
+      v.bodyVsCustomer.includes('slimmer')
+        ? "The body came out clearly slimmer than the customer's in image A (the store model's outline was kept): redraw the figure fuller, with exactly the customer's own size and proportions from image A, not larger."
+        : "The body came out clearly larger than the customer's in image A: redraw the figure slimmer, with exactly the customer's own size and proportions from image A, not slimmer.",
+    );
   }
   if (v.mirrored) {
     n.push(`The figure was mirrored: in image B the person faces the ${v.storeFacing} side of the frame, so the customer must face the ${v.storeFacing} side too.`);
