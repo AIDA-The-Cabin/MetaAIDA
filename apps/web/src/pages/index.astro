@@ -91,13 +91,13 @@ const ring = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12
     </div>
   </section>
 
-  <!-- ─── Three forms, one engine ─── -->
+  <!-- ─── Four forms, one engine ─── -->
   <section class="h-sec" id="forms">
     <header class="h-head">
-      <h2 class="h-h2" data-i18n="forms.title">Three forms, one engine</h2>
+      <h2 class="h-h2" data-i18n="forms.title">Four forms, one engine</h2>
       <p class="h-lede"><span data-i18n="forms.sub">For shoppers, for stores and for independent designers.</span></p>
     </header>
-    <div class="h-grid3 h-forms">
+    <div class="h-grid3 h-forms h-forms4">
       <article class="h-card h-form">
         <img class="h-form-art h-art-ext" src={`${I}/form-ext.webp`} width="560" height="355" loading="lazy" decoding="async" alt="" />
         <div class="h-form-txt">
@@ -117,6 +117,30 @@ const ring = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12
             <a class="card-link" href="/sdk" data-i18n="sdk.docs">Integration guide →</a>
             <a class="card-link" href="https://metaaida-shop-demo.pages.dev" target="_blank" rel="noopener" data-i18n="sdk.cta">Live example: demo store ↗</a>
           </div>
+        </div>
+      </article>
+      <article class="h-card h-form h-form-nl">
+        <div class="h-form-art h-art-nl" aria-hidden="true">
+          <div class="h-mail">
+            <span class="h-mail-store">Your store</span>
+            <span class="h-mail-kicker">&#10022; Styled on you</span>
+            <span class="h-mail-grid">
+              <img src={`${I}/action-result.webp`} width="384" height="492" loading="lazy" decoding="async" alt="" />
+              <img src={`${I}/hero-model-400.webp`} width="400" height="567" loading="lazy" decoding="async" alt="" />
+            </span>
+            <span class="h-mail-btn">Shop now &rarr;</span>
+          </div>
+        </div>
+        <div class="h-form-txt">
+          <svg class="h-icon h-icon-nl" viewBox="0 0 56 48" aria-hidden="true">
+            <defs><linearGradient id="nl-gold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#F8ECC6" /><stop offset=".5" stop-color="#E7C977" /><stop offset="1" stop-color="#9C7A2E" /></linearGradient></defs>
+            <rect x="5" y="9" width="46" height="31" rx="5" />
+            <path d="M6.5 11.5 28 27.5l21.5-16" />
+            <path class="spark" d="M46 3.5v7M42.5 7h7" />
+          </svg>
+          <h3 data-i18n="nlc.t">Newsletter for stores</h3>
+          <p data-i18n="nlc.d">Stores send their newsletter as usual: every subscriber with a Cabin profile sees the products on themselves, everyone else gets the regular one.</p>
+          <a class="card-link" href="/newsletter" data-i18n="nlc.cta">Build a newsletter →</a>
         </div>
       </article>
       <article class="h-card h-form" aria-disabled="true">
@@ -179,7 +203,7 @@ const ring = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12
           <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4.5v10.2M7.6 10.6 12 15l4.4-4.4M5.5 19.5h13" /></svg>
           <span data-i18n="dl.btn">Download the extension</span>
         </a>
-        <span class="h-dl-meta">v0.6.0 · ZIP · 81 KB</span>
+        <span class="h-dl-meta">v0.7.0 · ZIP · 89 KB</span>
         <p class="h-dl-note" data-i18n="dl.note">Not in the Chrome Web Store yet, so it installs by hand, in four steps.</p>
       </div>
       <div class="h-ext-steps">

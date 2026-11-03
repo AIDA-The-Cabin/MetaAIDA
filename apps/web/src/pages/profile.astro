@@ -23,6 +23,11 @@ import Layout from '../layouts/Layout.astro';
       </div>
 
       <div class="field">
+        <label for="pemail" data-i18n="profile.email">Email — for store newsletters (optional)</label>
+        <input type="email" id="pemail" maxlength="200" autocomplete="email" />
+      </div>
+
+      <div class="field">
         <label data-i18n="profile.photoLabel">Your photo — full body, facing front, plain background</label>
         <div class="photo-row">
           <div class="photo-preview">
@@ -48,6 +53,9 @@ import Layout from '../layouts/Layout.astro';
     <h2 class="section-title" style="text-align:left;font-size:26px;margin-top:46px" data-i18n="profile.cabin">Your Cabin</h2>
     <div class="looks" id="looks"><p class="muted">…</p></div>
 
+    <h2 class="section-title" style="text-align:left;font-size:26px;margin-top:46px" data-i18n="profile.outfits">Your outfits</h2>
+    <div class="outfits" id="outfits"><p class="muted">…</p></div>
+
     <div class="danger-row">
       <button class="btn-ghost" id="delete-profile" style="display:none;border-color:#5a2b2b;color:#cc8f8f" data-i18n="profile.deleteOne">Delete this profile</button>
       <button class="btn-ghost" id="delete" style="border-color:#5a2b2b;color:#cc8f8f" data-i18n="profile.delete">Delete my data</button>
@@ -64,13 +72,19 @@ import Layout from '../layouts/Layout.astro';
         uploading: 'Uploading…', drop: 'Drop a photo here or click to choose', fail: 'Upload failed — try again',
         consentAlert: 'Please accept processing before uploading.', confirmDel: 'Permanently delete all profiles, their photos and try-ons?',
         saved: 'Saved ✓', save: 'Save profile', down: 'Worker unavailable (start @aida/api).', photoAlt: 'Your photo',
-        newProfile: '+ New profile', profileN: 'Profile', confirmDelOne: 'Delete this profile, its photo and its try-ons?' },
+        newProfile: '+ New profile', profileN: 'Profile', confirmDelOne: 'Delete this profile, its photo and its try-ons?',
+        noOutfits: 'No outfits yet. In the extension, open The Cabin, drop pieces on your figure and tap “Imagine Outfit”.',
+        slots: { hat: 'Hat', jewelry: 'Jewelry', top: 'Top', bottoms: 'Bottoms', shoes: 'Shoes' } as Record<string, string>,
+        view: 'View product', badEmail: 'That email address does not look right.' },
       ro: { hello: (n: string, p: boolean) => (n ? `Salut, ${n}. ` : 'Salut! ') + (p ? 'Profilul tău e gata.' : 'Încarcă o poză pentru a începe.'),
         empty: 'Încă nimic în Cabină. Probează un produs din extensie sau de pe un magazin partener.',
         uploading: 'Se încarcă…', drop: 'Trage o poză aici sau apasă pentru a alege', fail: 'Încărcare eșuată — încearcă din nou',
         consentAlert: 'Te rugăm să accepți procesarea înainte de încărcare.', confirmDel: 'Ștergem definitiv toate profilurile, cu pozele și probele lor?',
         saved: 'Salvat ✓', save: 'Salvează profilul', down: 'Worker indisponibil (pornește @aida/api).', photoAlt: 'Fotografia ta',
-        newProfile: '+ Profil nou', profileN: 'Profil', confirmDelOne: 'Ștergem acest profil, cu poza și probele lui?' },
+        newProfile: '+ Profil nou', profileN: 'Profil', confirmDelOne: 'Ștergem acest profil, cu poza și probele lui?',
+        noOutfits: 'Încă nicio ținută. În extensie, deschide Cabina, pune piese pe siluetă și apasă „Imaginează ținuta”.',
+        slots: { hat: 'Pălărie', jewelry: 'Bijuterii', top: 'Bluză', bottoms: 'Pantaloni', shoes: 'Pantofi' } as Record<string, string>,
+        view: 'Vezi produsul', badEmail: 'Adresa de email nu pare corectă.' },
     }[L as 'en' | 'ro'];
 
     const $ = (s: string) => document.querySelector(s) as any;
@@ -148,6 +162,7 @@ import Layout from '../layouts/Layout.astro';
         profileName = p.name || '';
         activeId = p.id;
         $('#pname').value = p.name || '';
+        $('#pemail').value = p.email || '';
         $('#consent').checked = !!p.consentVersion;
         showPhoto(p.hasPhoto ? `${API}/v1/profile/photo?v=${p.bodyVersion}` : null);
         if (p.heightCm) $('#height').value = p.heightCm;
@@ -160,6 +175,22 @@ import Layout from '../layouts/Layout.astro';
         if (!items.length) { $('#looks').innerHTML = `<p class="muted">${T.empty}</p>`; return; }
         $('#looks').innerHTML = items.map((it: any) => `<div class="look"><img src="${it.resultUrl ? API + it.resultUrl : ''}" alt="${it.name || ''}" /></div>`).join('');
       } catch { $('#looks').innerHTML = '<p class="muted">—</p>'; }
+    }
+
+    // Outfits put together in the Cabin: the image and every piece in it, each with a link to its product.
+    const escH = (v: string) => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    async function loadOutfits() {
+      try {
+        const { items } = await (await fetch(API + '/v1/outfits')).json();
+        if (!items.length) { $('#outfits').innerHTML = `<p class="muted">${T.noOutfits}</p>`; return; }
+        $('#outfits').innerHTML = items.map((o: any) => `<article class="outfit">
+  <img class="outfit-img" src="${API}${o.resultUrl}" alt="" loading="lazy" />
+  <ul class="outfit-pieces">${o.pieces.map((p: any) => `<li>${p.productUrl ? `<a href="${escH(p.productUrl)}" target="_blank" rel="noopener">` : '<span>'}
+    <span class="op-slot">${T.slots[p.slot] ?? p.slot}</span>
+    <span class="op-name">${escH(p.name || p.site)}</span>
+    ${p.productUrl ? `<span class="op-link">${T.view} · ${escH(p.site)} ↗</span></a>` : '</span>'}</li>`).join('')}</ul>
+</article>`).join('');
+      } catch { $('#outfits').innerHTML = '<p class="muted">—</p>'; }
     }
 
     $('#consent').addEventListener('change', (e: any) =>
@@ -194,7 +225,9 @@ import Layout from '../layouts/Layout.astro';
     });
     $('#save-measures').addEventListener('click', async () => {
       const name = String($('#pname').value || '').trim();
-      await fetch(API + '/v1/profile', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, heightCm: Number($('#height').value) || undefined, weightKg: Number($('#weight').value) || undefined }) });
+      const email = String($('#pemail').value || '').trim();
+      if (email && !/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(email)) { alert(T.badEmail); return; }
+      await fetch(API + '/v1/profile', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, email, heightCm: Number($('#height').value) || undefined, weightKg: Number($('#weight').value) || undefined }) });
       profileName = name;
       $('#hello').textContent = T.hello(profileName, $('#photo-img').style.display === 'block');
       loadProfiles();
@@ -213,6 +246,24 @@ import Layout from '../layouts/Layout.astro';
       location.reload();
     });
 
-    loadProfile(); loadProfiles(); loadLooks();
+    loadProfile(); loadProfiles(); loadLooks(); loadOutfits();
   </script>
 </Layout>
+
+<style is:global>
+  input[type='email'] { width: 100%; height: 44px; padding: 0 14px; border-radius: 10px; background: var(--cabin-bg-inset);
+    border: 1px solid var(--cabin-border); color: var(--cabin-text-hi); font-size: 15px; }
+  .outfits { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+  .outfit { display: grid; grid-template-columns: 132px minmax(0, 1fr); gap: 14px; padding: 12px; border-radius: 16px;
+    background: var(--cabin-bg-surface); border: 1px solid var(--cabin-border); }
+  .outfit-img { width: 100%; aspect-ratio: 9 / 16; object-fit: cover; border-radius: 10px; background: #000; display: block; }
+  .outfit-pieces { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .outfit-pieces li > a, .outfit-pieces li > span { display: flex; flex-direction: column; gap: 1px; padding: 8px 10px; border-radius: 10px;
+    background: var(--cabin-bg-elevated); border: 1px solid var(--cabin-border); text-decoration: none; color: inherit; min-width: 0; }
+  .outfit-pieces li > a:hover { border-color: var(--cabin-gold-700); }
+  .op-slot { font-size: 10px; letter-spacing: .16em; text-transform: uppercase; color: var(--cabin-gold-300); }
+  .op-name { font-size: 13.5px; line-height: 1.35; color: var(--cabin-text-hi); }
+  .op-link { font-size: 11.5px; color: var(--cabin-text-low); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .outfit-pieces li > a:hover .op-link { color: var(--cabin-gold-300); }
+  @media (max-width: 520px) { .outfits { grid-template-columns: 1fr; } .outfit { grid-template-columns: 112px minmax(0, 1fr); } }
+</style>

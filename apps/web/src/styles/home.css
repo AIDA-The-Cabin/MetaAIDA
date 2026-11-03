@@ -99,6 +99,26 @@
 .h-art-ext { width: 58%; right: -20%; top: 22%; }
 .h-art-sdk { width: 52%; right: -12%; top: 6%; }
 .h-art-mkt { width: 66%; right: -20%; bottom: -5%; }
+/* four forms: two to a row */
+.h-forms4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.h-forms4 .h-form { min-height: 268px; }
+.h-forms4 .h-form-txt { max-width: 54%; }
+.h-forms4 .h-art-ext { width: 50%; right: -8%; top: 20%; }
+.h-forms4 .h-art-sdk { width: 44%; right: -4%; top: 5%; }
+.h-forms4 .h-art-mkt { width: 54%; right: -8%; bottom: -6%; }
+/* the newsletter card: an email, the products on its reader */
+.h-icon-nl { width: 50px; height: 40px; fill: none; stroke: url(#nl-gold); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round;
+  filter: drop-shadow(0 0 6px rgba(231,201,119,.35)); }
+.h-art-nl { width: 38%; right: 6%; top: 9%; height: auto; perspective: 900px; -webkit-mask-image: none; mask-image: none; }
+.h-mail { display: flex; flex-direction: column; gap: 7px; width: 100%; max-width: 206px; margin-left: auto; padding: 14px 14px 16px; border-radius: 14px;
+  background: linear-gradient(180deg, #fbf8f2, #efe7d9); color: #1c1b19; transform: rotateY(-14deg) rotateZ(4deg);
+  box-shadow: 0 24px 50px rgba(0,0,0,.55), 0 0 0 1px rgba(231,201,119,.55), 0 0 40px rgba(201,162,75,.18); }
+.h-mail-store { font-family: var(--serif); font-size: 13px; letter-spacing: .28em; text-transform: uppercase; text-align: center;
+  padding-bottom: 7px; border-bottom: 1px solid #e3d8c4; }
+.h-mail-kicker { font-size: 8.5px; font-weight: 600; letter-spacing: .2em; text-transform: uppercase; color: #9C7A2E; }
+.h-mail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.h-mail-grid img { width: 100%; height: auto; aspect-ratio: 3 / 4; object-fit: cover; object-position: center 20%; border-radius: 7px; display: block; }
+.h-mail-btn { align-self: flex-start; font-size: 9px; font-weight: 600; letter-spacing: .04em; padding: 6px 10px; border-radius: 999px; background: #1c1b19; color: #f6efe2; }
 .h-soon { position: absolute; z-index: 2; top: 16px; right: 16px; font-size: 10.5px; letter-spacing: .18em; text-transform: uppercase;
   color: var(--cabin-text-mid); border: 1px solid #3a3e46; background: rgba(11,12,14,.6); border-radius: 999px; padding: 3px 11px; }
 
@@ -174,6 +194,12 @@
   .h-visual { min-height: 460px; }
   .h-sec { padding: 48px 24px; }
   .h-grid3 { grid-template-columns: 1fr; max-width: 680px; margin: 0 auto; gap: 18px; }
+  .h-forms4 .h-form { min-height: 220px; }
+  .h-forms4 .h-form-txt { max-width: 60%; }
+  .h-forms4 .h-art-ext { width: 58%; right: -20%; top: 22%; }
+  .h-forms4 .h-art-sdk { width: 52%; right: -12%; top: 6%; }
+  .h-forms4 .h-art-mkt { width: 66%; right: -20%; bottom: -5%; }
+  .h-art-nl { width: 40%; right: 2%; top: 10%; }
   .h-step { grid-template-columns: minmax(0, 1fr) 190px; min-height: 0; }
   .h-step-ui { max-width: 240px; justify-self: end; width: 100%; }
   .h-form { min-height: 220px; }
@@ -219,6 +245,14 @@
   .h-art-ext { width: 84%; right: -16%; top: 6px; }
   .h-art-sdk { width: 66%; right: -8%; top: -8px; }
   .h-art-mkt { width: 76%; right: -10%; top: 4px; bottom: auto; }
+  .h-forms4 .h-form-txt { max-width: none; }
+  .h-forms4 .h-art-ext { width: 84%; right: -16%; top: 6px; }
+  .h-forms4 .h-art-sdk { width: 66%; right: -8%; top: -8px; }
+  .h-forms4 .h-art-mkt { width: 76%; right: -10%; top: 4px; bottom: auto; }
+  .h-form-nl { padding-top: 232px; }
+  .h-art-nl { width: 62%; right: 6%; top: 18px; -webkit-mask-image: none; mask-image: none; }
+  .h-mail { max-width: 196px; padding: 11px 11px 12px; gap: 6px; transform: rotateY(-10deg) rotateZ(3deg); }
+  .h-mail-store { font-size: 11px; letter-spacing: .22em; white-space: nowrap; }
   .h-icon { height: 36px; margin-bottom: 12px; }
   .h-ribbon-left { width: 300px; left: -170px; top: 12%; }
   .h-ribbon-right { width: 300px; right: -170px; top: 52%; }

@@ -50,6 +50,10 @@ export const profiles = sqliteTable('profiles', {
   gender: text('gender'),
   createdAt: integer('created_at').notNull(),
   updatedAt: integer('updated_at').notNull(),
+  // The address this person receives store newsletters at (newsletter recipients are matched on it).
+  email: text('email'),
+  // Where the person stands in the profile photo (SAM boxes) for the Cabin's drop zones — JSON, per photo id.
+  figure: text('figure'),
 });
 
 export const userPhotos = sqliteTable('user_photos', {
@@ -73,6 +77,9 @@ export const garments = sqliteTable('garments', {
   productRef: text('product_ref'),
   category: text('category'),
   createdAt: integer('created_at').notNull(),
+  // The product the photo belongs to (its own page, its name), captured where the photo was converted.
+  productUrl: text('product_url'),
+  name: text('name'),
 });
 
 export const tryonResults = sqliteTable('tryon_results', {
@@ -127,4 +134,83 @@ export const consentRecords = sqliteTable('consent_records', {
   withdrawnAt: integer('withdrawn_at'),
   ip: text('ip'),
   userAgent: text('user_agent'),
+});
+
+// Outfits put together in the Cabin: the profile photo dressed in pieces taken from several try-ons.
+// items = JSON snapshot of the pieces (slot, try-on, product name and link), kept even if a try-on goes.
+export const outfits = sqliteTable('outfits', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull(),
+  profileId: text('profile_id').notNull(),
+  bodyVersion: integer('body_version').notNull(),
+  status: text('status').notNull(),
+  resultR2Key: text('result_r2_key'),
+  items: text('items').notNull(),
+  costUsd: real('cost_usd'),
+  latencyMs: integer('latency_ms'),
+  error: text('error'),
+  createdAt: integer('created_at').notNull(),
+});
+
+// Store newsletters (B2B): the store's products sent to a list of addresses. Recipients with a profile photo
+// get the products on themselves, everyone else the store's own photos. Sending is the mail service's job.
+export const nlCampaigns = sqliteTable('nl_campaigns', {
+  id: text('id').primaryKey(),
+  tenantId: text('tenant_id').notNull(),
+  storeName: text('store_name').notNull(),
+  subject: text('subject').notNull(),
+  intro: text('intro'),
+  status: text('status').notNull(),
+  createdAt: integer('created_at').notNull(),
+});
+
+export const nlProducts = sqliteTable('nl_products', {
+  id: text('id').primaryKey(),
+  campaignId: text('campaign_id').notNull(),
+  position: integer('position').notNull(),
+  name: text('name').notNull(),
+  productUrl: text('product_url'),
+  imageUrl: text('image_url').notNull(),
+  price: text('price'),
+});
+
+export const nlRecipients = sqliteTable('nl_recipients', {
+  id: text('id').primaryKey(),
+  campaignId: text('campaign_id').notNull(),
+  email: text('email').notNull(),
+  profileId: text('profile_id'),
+  // 'personal' (a profile with a photo: the products on them) or 'standard' (the store's photos)
+  kind: text('kind').notNull(),
+  createdAt: integer('created_at').notNull(),
+});
+
+// One product on one personal recipient: the try-on it shows, or why it shows the store photo.
+export const nlItems = sqliteTable('nl_items', {
+  id: text('id').primaryKey(),
+  campaignId: text('campaign_id').notNull(),
+  recipientId: text('recipient_id').notNull(),
+  productId: text('product_id').notNull(),
+  status: text('status').notNull(),
+  tryonResultId: text('tryon_result_id'),
+  resultR2Key: text('result_r2_key'),
+  error: text('error'),
+  updatedAt: integer('updated_at').notNull(),
+});
+
+// Rendered emails waiting for the mail service: one per recipient.
+export const nlOutbox = sqliteTable('nl_outbox', {
+  id: text('id').primaryKey(),
+  campaignId: text('campaign_id').notNull(),
+  recipientId: text('recipient_id').notNull(),
+  toEmail: text('to_email').notNull(),
+  subject: text('subject').notNull(),
+  html: text('html').notNull(),
+  text: text('text').notNull(),
+  kind: text('kind').notNull(),
+  // 'ready' → the mail service sends it → 'sent' (or 'failed' with error)
+  status: text('status').notNull(),
+  createdAt: integer('created_at').notNull(),
+  sentAt: integer('sent_at'),
+  providerId: text('provider_id'),
+  error: text('error'),
 });

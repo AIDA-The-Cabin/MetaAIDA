@@ -8,6 +8,10 @@ export interface PagePhoto {
   url: string;
   /** Size/query-independent photo id (what the replacement engine matches on). */
   id: string;
+  /** Where the page links the photo to (a product tile's own product page), when it does. */
+  link?: string;
+  /** The product's name as the page gives it (the photo's alt text or its link's label). */
+  name?: string;
 }
 
 const MIN_SIDE = 180;
@@ -93,6 +97,20 @@ function activeUrl(img: HTMLImageElement): string {
   return '';
 }
 
+/** The product a photo stands for on the page: the link around it and a short name (alt text, or the link's label). */
+function productOf(img: HTMLImageElement): { link?: string; name?: string } {
+  const a = img.closest('a[href]') as HTMLAnchorElement | null;
+  const href = a?.getAttribute('href') ?? '';
+  const link = href && !href.startsWith('#') && !/^(javascript|mailto|tel):/i.test(href) ? absolute(href) : '';
+  const clean = (v?: string | null) => (v ?? '').replace(/\s+/g, ' ').trim();
+  let name = clean(img.alt);
+  if (!name && a) name = clean(a.getAttribute('aria-label')) || clean(a.getAttribute('title')) || clean(a.textContent);
+  return {
+    link: /^https?:\/\//.test(link) && link !== location.href ? link : undefined,
+    name: name && name.length >= 3 ? name.slice(0, 160) : undefined,
+  };
+}
+
 export function collectPageImages(root: ParentNode = document): PagePhoto[] {
   const out = new Map<string, PagePhoto>();
   for (const img of Array.from(root.querySelectorAll<HTMLImageElement>('img'))) {
@@ -114,7 +132,7 @@ export function collectPageImages(root: ParentNode = document): PagePhoto[] {
       .map((c) => ({ ...c, url: absolute(c.url) }))
       .filter((c) => c.w > 0 && usable(c.url) && photoId(c.url) === id);
     sizes.sort((a, b) => Math.abs(a.w - TARGET_W) - Math.abs(b.w - TARGET_W) || b.w - a.w);
-    out.set(id, { url: sizes[0]?.url ?? active, id });
+    out.set(id, { url: sizes[0]?.url ?? active, id, ...productOf(img) });
   }
   return [...out.values()];
 }

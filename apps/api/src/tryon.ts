@@ -1,9 +1,9 @@
-import { and, eq, inArray, like, ne, or } from 'drizzle-orm';
-import { ROUTES, type TryonResult, type TryonStatus } from '@aida/shared';
+import { and, desc, eq, inArray, like, ne, or } from 'drizzle-orm';
+import { ROUTES, type TryonItem, type TryonResult, type TryonStatus } from '@aida/shared';
 import * as schema from './db/schema';
 import type { DB } from './db/client';
 import type { Env } from './env';
-import { newId, sha256Hex, dataUri, fetchImageAsDataUri, encodeKey } from './util';
+import { newId, sha256Hex, dataUri, fetchImageAsDataUri, encodeKey, decodeKey } from './util';
 import {
   metaTryon,
   metaSceneTryon,
@@ -76,6 +76,12 @@ async function logUsage(
     .run();
 }
 
+/** The product a photo belongs to, as the page shows it (its own link and name). */
+export interface ProductInfo {
+  productUrl?: string;
+  name?: string;
+}
+
 export async function resolveGarment(
   db: DB,
   tenantId: string,
@@ -83,6 +89,7 @@ export async function resolveGarment(
   pageUrl: string,
   productRef?: string,
   category?: string,
+  product: ProductInfo = {},
 ) {
   const imageHash = await sha256Hex(garmentImageUrl);
   let g = await db
@@ -102,6 +109,8 @@ export async function resolveGarment(
         productRef: productRef ?? null,
         category: category ?? null,
         createdAt: Date.now(),
+        productUrl: product.productUrl ?? null,
+        name: product.name?.trim() || null,
       })
       .run();
     g = await db
@@ -109,8 +118,35 @@ export async function resolveGarment(
       .from(schema.garments)
       .where(and(eq(schema.garments.tenantId, tenantId), eq(schema.garments.imageHash, imageHash)))
       .get();
+  } else if ((!g.productUrl && product.productUrl) || (!g.name && product.name?.trim())) {
+    // Photos converted before their product was known learn it the next time a page shows them.
+    const set = {
+      productUrl: g.productUrl ?? product.productUrl ?? null,
+      name: g.name ?? (product.name?.trim() || null),
+    };
+    await db.update(schema.garments).set(set).where(eq(schema.garments.id, g.id)).run();
+    g = { ...g, ...set };
   }
   return g!;
+}
+
+/**
+ * The store photo as a data URI. A photo stored with us (a store's upload for a newsletter) is read straight
+ * from R2: a Worker fetching its own address is not something to rely on.
+ */
+export async function garmentDataUri(env: Env, url: string): Promise<string> {
+  const m = /\/v1\/images\/([A-Za-z0-9_-]+)$/.exec(new URL(url).pathname);
+  if (m) {
+    let key = '';
+    try {
+      key = decodeKey(m[1]);
+    } catch {
+      /* not one of ours */
+    }
+    const obj = key.startsWith('results/') ? await env.BUCKET.get(key) : null;
+    if (obj) return dataUri(await obj.arrayBuffer(), obj.httpMetadata?.contentType ?? 'image/jpeg');
+  }
+  return fetchImageAsDataUri(url);
 }
 
 export interface TryonOutcome {
@@ -144,7 +180,7 @@ async function prepareInputs(
   if (!bodyObj) throw new TryonError('no_body_photo', 'Body photo bytes missing.');
   return {
     bodyB64: dataUri(await bodyObj.arrayBuffer(), 'image/webp'),
-    garmentB64: await fetchImageAsDataUri(garment.sourceImageUrl),
+    garmentB64: await garmentDataUri(env, garment.sourceImageUrl),
   };
 }
 
@@ -232,10 +268,17 @@ function doneResult(row: ResultRow): TryonResult {
   };
 }
 
+export interface TryonOptions extends ProductInfo {
+  /** Someone other than the account's active profile (a store newsletter's recipient). */
+  profile?: ProfileRow;
+  /** 'tenant': the store pays (a newsletter) — the customer's credits are left alone. */
+  billing?: 'user' | 'tenant';
+}
+
 export async function runTryon(
   env: Env,
   db: DB,
-  ctx: { userId: string; tenantId: string },
+  auth: { userId: string; tenantId: string },
   garmentImageUrl: string,
   pageUrl: string,
   productRef?: string,
@@ -243,11 +286,15 @@ export async function runTryon(
   batchId?: string,
   sceneOnly = false,
   allPeople = false,
+  opts: TryonOptions = {},
 ): Promise<TryonOutcome> {
-  const profile = await activeProfile(db, ctx.userId);
+  const profile = opts.profile ?? (await activeProfile(db, auth.userId));
   if (!profile.primaryPhotoId) throw new TryonError('no_body_photo', 'Upload a body photo first.');
+  // The person's own account owns the try-on (cache, image, row), whoever asked for it.
+  const ctx = { userId: profile.userId, tenantId: auth.tenantId };
+  const billUser = opts.billing !== 'tenant';
 
-  const garment = await resolveGarment(db, ctx.tenantId, garmentImageUrl, pageUrl, productRef, category);
+  const garment = await resolveGarment(db, ctx.tenantId, garmentImageUrl, pageUrl, productRef, category, opts);
   const hitFor = async (variant: string) => {
     const cacheKey = await cacheKeyFor(ctx.userId, profile.bodyVersion, garment.id, variant);
     const row = await db.select().from(schema.tryonResults).where(eq(schema.tryonResults.cacheKey, cacheKey)).get();
@@ -264,9 +311,9 @@ export async function runTryon(
     profileId: profile.id,
     result: { id: '', status: 'skipped', cached: false, skipped: why },
   });
-  // No try-on of this photo passed the quality check (or Meta refused it): whole-page conversion leaves it
-  // alone; a click on that one product tries again.
-  if (sceneOnly && cached?.status === 'rejected') return skipped('rejected');
+  // No try-on of this photo passed the quality check (or Meta refused it, or the customer removed it from their
+  // Cabin): whole-page conversion leaves it alone; a click on that one product tries again.
+  if (sceneOnly && (cached?.status === 'rejected' || cached?.status === 'removed')) return skipped('rejected');
 
   const { bodyB64, garmentB64 } = await prepareInputs(env, db, profile, garment);
 
@@ -300,7 +347,7 @@ export async function runTryon(
 
   // 1 credit per new try-on (cache hits above are free), taken once a kept image exists — a request that
   // dies half-way (a timeout, a Worker limit) or ends rejected never costs a credit.
-  if ((await getCredits(db, ctx.userId)) <= 0) throw new TryonError('no_credits', 'Out of credits.');
+  if (billUser && (await getCredits(db, ctx.userId)) <= 0) throw new TryonError('no_credits', 'Out of credits.');
 
   // Muse Image: one synchronous call returns the finished image (~15–35 s in the store's scene, plus ~20–40 s
   // for each quality check).
@@ -353,7 +400,7 @@ export async function runTryon(
       throw e;
     }
   }
-  await chargeCredit(db, ctx.userId); // false only if parallel requests took the last credit meanwhile
+  if (billUser) await chargeCredit(db, ctx.userId); // false only if parallel requests took the last credit meanwhile
   // WebP straight from Muse Image, or JPEG when the photo was padded to an accepted shape and cropped back.
   const ext = gen.contentType.includes('jpeg') ? 'jpg' : 'webp';
   const resultKey = `results/${ctx.tenantId}/${ctx.userId}/${garment.imageHash}/${profile.bodyVersion}-${variant}.${ext}`;
@@ -446,11 +493,6 @@ export async function siteResults(
 ): Promise<Array<{ garmentImageUrl: string; resultUrl: string }>> {
   const profile = await activeProfile(db, ctx.userId);
   if (!profile.primaryPhotoId) return [];
-  const host = new URL(pageUrl).host.replace(/^www\./, '');
-  const onSite = [host, `www.${host}`].flatMap((h) => [
-    like(schema.garments.sourcePageUrl, `https://${h}/%`),
-    like(schema.garments.sourcePageUrl, `http://${h}/%`),
-  ]);
   const rows = await db
     .select({ url: schema.garments.sourceImageUrl, key: schema.tryonResults.resultR2Key, variant: schema.tryonResults.variant })
     .from(schema.tryonResults)
@@ -462,7 +504,7 @@ export async function siteResults(
         eq(schema.tryonResults.status, 'done'),
         inArray(schema.tryonResults.variant, VARIANTS),
         eq(schema.garments.tenantId, ctx.tenantId),
-        or(...onSite),
+        onSite(new URL(pageUrl).host),
       ),
     )
     .limit(2000)
@@ -476,4 +518,114 @@ export async function siteResults(
     if (!cur || rank < cur.rank) best.set(r.url, { key: r.key, rank });
   }
   return [...best].map(([garmentImageUrl, b]) => ({ garmentImageUrl, resultUrl: imageUrl(b.key) }));
+}
+
+/** Photos converted on one site's pages (with or without www). */
+function onSite(host: string) {
+  const h = host.replace(/^www\./, '');
+  return or(
+    ...[h, `www.${h}`].flatMap((x) => [
+      like(schema.garments.sourcePageUrl, `https://${x}/%`),
+      like(schema.garments.sourcePageUrl, `http://${x}/%`),
+    ]),
+  );
+}
+
+const hostOf = (url?: string | null) => {
+  try {
+    return url ? new URL(url).host.replace(/^www\./, '') : '';
+  } catch {
+    return '';
+  }
+};
+
+/**
+ * Every converted photo of the active profile, newest first, one per photo — the Cabin's "Try ons" list and
+ * its dressing bar. `site` keeps it to one store (the SDK on a store's own pages shows only that store).
+ */
+export async function listTryons(db: DB, ctx: { userId: string; tenantId: string }, site?: string): Promise<TryonItem[]> {
+  const profile = await activeProfile(db, ctx.userId);
+  if (!profile.primaryPhotoId) return [];
+  const rows = await db
+    .select({
+      id: schema.tryonResults.id,
+      key: schema.tryonResults.resultR2Key,
+      variant: schema.tryonResults.variant,
+      createdAt: schema.tryonResults.createdAt,
+      garmentId: schema.garments.id,
+      url: schema.garments.sourceImageUrl,
+      page: schema.garments.sourcePageUrl,
+      productUrl: schema.garments.productUrl,
+      name: schema.garments.name,
+    })
+    .from(schema.tryonResults)
+    .innerJoin(schema.garments, eq(schema.garments.id, schema.tryonResults.garmentId))
+    .where(
+      and(
+        eq(schema.tryonResults.userId, ctx.userId),
+        eq(schema.tryonResults.bodyVersion, profile.bodyVersion),
+        eq(schema.tryonResults.status, 'done'),
+        inArray(schema.tryonResults.variant, VARIANTS),
+        eq(schema.garments.tenantId, ctx.tenantId),
+        ...(site ? [onSite(site)] : []),
+      ),
+    )
+    .orderBy(desc(schema.tryonResults.createdAt))
+    .limit(2000)
+    .all();
+  // Products tried on from their own page carry the name the page gave them.
+  const tried = await db
+    .select({ garmentId: schema.cabinItems.garmentId, name: schema.cabinItems.name, page: schema.cabinItems.sourcePageUrl })
+    .from(schema.cabinItems)
+    .where(and(eq(schema.cabinItems.userId, ctx.userId), eq(schema.cabinItems.profileId, profile.id)))
+    .all();
+  const fromCabin = new Map(tried.map((t) => [t.garmentId, t]));
+  const best = new Map<string, { row: (typeof rows)[number]; rank: number }>();
+  for (const r of rows) {
+    if (!r.key) continue;
+    const rank = VARIANTS.indexOf(r.variant ?? '');
+    const cur = best.get(r.garmentId);
+    if (!cur || rank < cur.rank) best.set(r.garmentId, { row: r, rank });
+  }
+  return [...best.values()]
+    .map(({ row: r }) => {
+      const c = fromCabin.get(r.garmentId);
+      return {
+        id: r.id,
+        resultUrl: imageUrl(r.key!),
+        garmentImageUrl: r.url,
+        productUrl: r.productUrl ?? c?.page ?? undefined,
+        pageUrl: r.page ?? undefined,
+        name: r.name ?? c?.name ?? undefined,
+        site: hostOf(r.productUrl ?? r.page ?? r.url),
+        createdAt: r.createdAt,
+      };
+    })
+    .sort((a, b) => b.createdAt - a.createdAt);
+}
+
+/**
+ * The customer removes one try-on from their Cabin: its image is deleted and the photo shows the store's own
+ * picture again. The row stays as 'removed', so converting the whole page again leaves that photo alone.
+ */
+export async function removeTryon(env: Env, db: DB, ctx: { userId: string }, id: string): Promise<boolean> {
+  const row = await db
+    .select()
+    .from(schema.tryonResults)
+    .where(and(eq(schema.tryonResults.id, id), eq(schema.tryonResults.userId, ctx.userId)))
+    .get();
+  if (!row) return false;
+  if (row.resultR2Key) await env.BUCKET.delete(row.resultR2Key);
+  await db
+    .update(schema.tryonResults)
+    .set({ status: 'removed', resultR2Key: null, error: 'removed by the customer' })
+    .where(eq(schema.tryonResults.id, id))
+    .run();
+  if (row.profileId) {
+    await db
+      .delete(schema.cabinItems)
+      .where(and(eq(schema.cabinItems.profileId, row.profileId), eq(schema.cabinItems.garmentId, row.garmentId)))
+      .run();
+  }
+  return true;
 }

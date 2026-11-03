@@ -40,7 +40,8 @@ export async function planConversion(
         const key = await cacheKeyFor(ctx.userId, profile.bodyVersion, g.id, v);
         const tr = await db.select().from(schema.tryonResults).where(eq(schema.tryonResults.cacheKey, key)).get();
         if (tr?.status === 'done' && tr.resultR2Key) cached = true;
-        if (tr?.status === 'rejected') rejected = true; // no try-on of it passed the quality check: not retried
+        // no try-on of it passed the quality check, or the customer removed it: not retried
+        if (tr?.status === 'rejected' || tr?.status === 'removed') rejected = true;
       }
       if (cached || rejected) {
         items.push({ url, state: cached ? 'cached' : 'skip' });

@@ -13,13 +13,19 @@ import {
   profileUpdateSchema,
   profileCreateSchema,
   consentSchema,
+  outfitCreateSchema,
+  nlPreviewSchema,
+  nlCampaignCreateSchema,
+  nlRunSchema,
 } from '@aida/shared';
 import * as schema from './db/schema';
 import { getDb } from './db/client';
 import type { Env } from './env';
 import { stubAuth, tenantFromApiKey } from './auth';
 import { getCredits } from './credits';
-import { runTryon, imageUrl, TryonError, getTryonById, lookupResults, siteResults } from './tryon';
+import { runTryon, imageUrl, TryonError, getTryonById, lookupResults, siteResults, listTryons, removeTryon } from './tryon';
+import { createOutfit, listOutfits, profileFigure, removeOutfit } from './outfit';
+import { buildOutbox, campaignDetail, createCampaign, listCampaigns, outboxHtml, productPreview, runItem, storeUpload } from './newsletter';
 import { planConversion } from './convert';
 import { activeProfile, createProfile, listProfiles, nextBodyVersion, profileSummary, setActiveProfile } from './profiles';
 import { avatarKey, buildAvatar, closeupKey } from './avatar';
@@ -63,6 +69,7 @@ app.get(ROUTES.profile, async (c) => {
     weightKg: p.weightKg ?? undefined,
     gender: p.gender ?? undefined,
     consentVersion: u?.consentVersion ?? undefined,
+    email: p.email ?? undefined,
   });
 });
 
@@ -83,6 +90,7 @@ app.patch(ROUTES.profile, async (c) => {
       heightCm: body.heightCm ?? null,
       weightKg: body.weightKg ?? null,
       gender: body.gender ?? null,
+      ...(body.email !== undefined ? { email: body.email.trim().toLowerCase() || null } : {}),
       updatedAt: Date.now(),
     })
     .where(eq(schema.profiles.id, p.id))
@@ -174,13 +182,16 @@ app.delete('/v1/profiles/:id', async (c) => {
   if (all.length <= 1) return c.json({ error: 'last_profile', detail: 'An account keeps at least one profile.' }, 400);
   const photos = await db.select().from(schema.userPhotos).where(eq(schema.userPhotos.profileId, p.id)).all();
   const results = await db.select().from(schema.tryonResults).where(eq(schema.tryonResults.profileId, p.id)).all();
+  const outfits = await db.select().from(schema.outfits).where(eq(schema.outfits.profileId, p.id)).all();
   const keys = [
     ...photos.map((x) => x.r2Key),
     ...photos.map((x) => closeupKey(tenantId, userId, x.id)),
     ...results.map((r) => r.resultR2Key),
+    ...outfits.map((o) => o.resultR2Key),
     p.avatarR2Key,
   ].filter((k): k is string => !!k);
-  if (keys.length) await c.env.BUCKET.delete(keys);
+  for (let i = 0; i < keys.length; i += 1000) await c.env.BUCKET.delete(keys.slice(i, i + 1000));
+  await db.delete(schema.outfits).where(eq(schema.outfits.profileId, p.id)).run();
   await db.delete(schema.cabinItems).where(eq(schema.cabinItems.profileId, p.id)).run();
   await db.delete(schema.tryonResults).where(eq(schema.tryonResults.profileId, p.id)).run();
   await db.delete(schema.userPhotos).where(eq(schema.userPhotos.profileId, p.id)).run();
@@ -225,6 +236,7 @@ app.post(ROUTES.tryon, async (c) => {
       body.batchId,
       body.sceneOnly,
       body.allPeople,
+      { productUrl: body.productUrl, name: body.name },
     );
     return c.json(out.result);
   } catch (e) {
@@ -291,7 +303,10 @@ app.post(ROUTES.cabin, async (c) => {
     return c.json({ error: 'bad_request', detail: String(e) }, 400);
   }
   try {
-    const out = await runTryon(c.env, db, ctx, body.garmentImageUrl, body.pageUrl, body.productRef, 'auto', body.batchId);
+    const out = await runTryon(c.env, db, ctx, body.garmentImageUrl, body.pageUrl, body.productRef, 'auto', body.batchId, false, false, {
+      productUrl: body.productUrl ?? body.pageUrl, // tried from the product's own page
+      name: body.name,
+    });
     const itemId = newId('cab');
     await db
       .insert(schema.cabinItems)
@@ -372,10 +387,134 @@ app.get(ROUTES.cabin, async (c) => {
   return c.json({ items: out });
 });
 
+// Every converted photo of the active profile (the Cabin's "Try ons" tab and its dressing bar), newest first.
+// ?site=<host> keeps it to one store — the SDK on a store's own pages shows only that store.
+app.get(ROUTES.tryons, async (c) => {
+  const ctx = stubAuth();
+  const site = c.req.query('site')?.trim() || undefined;
+  return c.json({ items: await listTryons(getDb(c.env.DB), ctx, site) });
+});
+
+app.delete('/v1/tryons/:id', async (c) => {
+  const ok = await removeTryon(c.env, getDb(c.env.DB), stubAuth(), c.req.param('id'));
+  return ok ? c.json({ ok: true }) : c.json({ error: 'not_found' }, 404);
+});
+
+// Where the person stands in the active profile's photo (the Cabin's drop zones). Built once per photo.
+app.get(ROUTES.profileFigure, async (c) => {
+  const { userId, tenantId } = stubAuth();
+  const db = getDb(c.env.DB);
+  const fig = await profileFigure(c.env, db, tenantId, await activeProfile(db, userId));
+  return fig ? c.json(fig) : c.json({ error: 'no_photo' }, 404);
+});
+
+// ── Outfits: the active profile's photo dressed in pieces dropped from their try-ons ──
+app.post(ROUTES.outfits, async (c) => {
+  const ctx = stubAuth();
+  let body;
+  try {
+    body = outfitCreateSchema.parse(await c.req.json());
+  } catch (e) {
+    return c.json({ error: 'bad_request', detail: String(e) }, 400);
+  }
+  try {
+    return c.json(await createOutfit(c.env, getDb(c.env.DB), ctx, body.slots));
+  } catch (e) {
+    if (e instanceof TryonError) return c.json({ error: e.code, detail: e.message }, 400);
+    return c.json({ error: 'outfit_failed', detail: String((e as Error).message) }, 500);
+  }
+});
+
+app.get(ROUTES.outfits, async (c) => c.json({ items: await listOutfits(getDb(c.env.DB), stubAuth()) }));
+
+app.delete('/v1/outfits/:id', async (c) => {
+  const ok = await removeOutfit(c.env, getDb(c.env.DB), stubAuth(), c.req.param('id'));
+  return ok ? c.json({ ok: true }) : c.json({ error: 'not_found' }, 404);
+});
+
 app.delete('/v1/cabin/:id', async (c) => {
   const db = getDb(c.env.DB);
   await db.delete(schema.cabinItems).where(eq(schema.cabinItems.id, c.req.param('id'))).run();
   return c.json({ ok: true });
+});
+
+// ── Store newsletters (B2B): products + addresses → one email per address, on the subscriber when they have a Cabin ──
+const nlError = (c: any, e: unknown) =>
+  e instanceof TryonError
+    ? c.json({ error: e.code, detail: e.message }, e.code === 'not_found' ? 404 : 400)
+    : c.json({ error: 'newsletter_failed', detail: String((e as Error).message) }, 500);
+
+// What a product page says about itself (name, main photo, price) — the store pastes a link.
+app.post('/v1/newsletter/preview', async (c) => {
+  let body;
+  try {
+    body = nlPreviewSchema.parse(await c.req.json());
+  } catch (e) {
+    return c.json({ error: 'bad_request', detail: String(e) }, 400);
+  }
+  try {
+    return c.json(await productPreview(body.url));
+  } catch (e) {
+    return nlError(c, e);
+  }
+});
+
+// A product photo the store uploads instead of a link (served to the emails like the try-ons).
+app.post('/v1/newsletter/upload', async (c) => {
+  try {
+    const url = await storeUpload(c.env, stubAuth().tenantId, await c.req.arrayBuffer(), c.req.header('content-type') ?? '', new URL(c.req.url).origin);
+    return c.json({ imageUrl: url });
+  } catch (e) {
+    return nlError(c, e);
+  }
+});
+
+app.post('/v1/newsletter/campaigns', async (c) => {
+  let body;
+  try {
+    body = nlCampaignCreateSchema.parse(await c.req.json());
+  } catch (e) {
+    return c.json({ error: 'bad_request', detail: String(e) }, 400);
+  }
+  return c.json(await createCampaign(getDb(c.env.DB), stubAuth(), body));
+});
+
+app.get('/v1/newsletter/campaigns', async (c) => c.json({ items: await listCampaigns(getDb(c.env.DB), stubAuth()) }));
+
+app.get('/v1/newsletter/campaigns/:id', async (c) => {
+  const d = await campaignDetail(getDb(c.env.DB), stubAuth(), c.req.param('id'));
+  return d ? c.json(d) : c.json({ error: 'not_found' }, 404);
+});
+
+// One product on one subscriber (the store's page drives these, a few at a time).
+app.post('/v1/newsletter/campaigns/:id/run', async (c) => {
+  let body;
+  try {
+    body = nlRunSchema.parse(await c.req.json());
+  } catch (e) {
+    return c.json({ error: 'bad_request', detail: String(e) }, 400);
+  }
+  try {
+    return c.json(await runItem(c.env, getDb(c.env.DB), stubAuth(), c.req.param('id'), body.recipientId, body.productId));
+  } catch (e) {
+    return nlError(c, e);
+  }
+});
+
+// Render every email into the outbox, where the mail service picks them up.
+app.post('/v1/newsletter/campaigns/:id/build', async (c) => {
+  try {
+    return c.json(await buildOutbox(getDb(c.env.DB), stubAuth(), c.req.param('id'), new URL(c.req.url).origin));
+  } catch (e) {
+    return nlError(c, e);
+  }
+});
+
+// The email as its recipient sees it ("view in browser").
+app.get('/v1/newsletter/outbox/:id', async (c) => {
+  const html = await outboxHtml(getDb(c.env.DB), c.req.param('id'));
+  if (!html) return c.text('Not found', 404);
+  return c.html(html, 200, { 'Cache-Control': 'private, no-store' });
 });
 
 app.post(ROUTES.consent, async (c) => {
@@ -439,6 +578,7 @@ app.post(ROUTES.accountDelete, async (c) => {
   }
   // purge DB rows, then start over with one empty profile
   await db.delete(schema.cabinItems).where(eq(schema.cabinItems.userId, userId)).run();
+  await db.delete(schema.outfits).where(eq(schema.outfits.userId, userId)).run();
   await db.delete(schema.tryonResults).where(eq(schema.tryonResults.userId, userId)).run();
   await db.delete(schema.userPhotos).where(eq(schema.userPhotos.userId, userId)).run();
   await db.delete(schema.profiles).where(eq(schema.profiles.userId, userId)).run();

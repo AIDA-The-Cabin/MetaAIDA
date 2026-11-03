@@ -16,6 +16,7 @@ const MENUS: Record<string, { key: string; text: string; items: Item[] }> = {
       { key: 'menu.action', text: 'See it in action', href: '/#action' },
       { key: 'menu.ext', text: 'Browser extension', href: '/#extension' },
       { key: 'menu.sdk', text: 'SDK for stores', href: '/sdk' },
+      { key: 'menu.nl', text: 'Newsletter for stores', href: '/newsletter' },
     ],
   },
   developers: {
@@ -162,7 +163,22 @@ const FOOT_MENUS = ['product', 'developers', 'mkt', 'resources', 'company'];
           'menu.sdk': 'SDK pentru magazine', 'menu.guide': 'Ghid de integrare', 'menu.skill': 'Skill pentru AI · SKILL.md',
           'menu.demo': 'Magazin demo live ↗', 'menu.code': 'Codul sursă ↗', 'menu.getext': 'Instalează extensia',
           'menu.zip': 'Descarcă arhiva ZIP', 'menu.profile': 'Creează-ți profilul', 'menu.why': 'De ce Cabina',
-          'menu.about': 'Despre Cabina',
+          'menu.about': 'Despre Cabina', 'menu.nl': 'Newsletter pentru magazine',
+          'nlc.t': 'Newsletter pentru magazine',
+          'nlc.d': 'Magazinele își trimit newsletterul ca de obicei: fiecare abonat cu profil în Cabină vede produsele pe el însuși, ceilalți îl primesc pe cel obișnuit.',
+          'nlc.cta': 'Creează un newsletter →',
+          'nl.eyebrow': 'Pentru magazine',
+          'nl.title': 'Newsletterul tău,<br /><em>purtat de fiecare abonat</em>',
+          'nl.sub': 'Alegi câteva produse și lipești lista. Fiecare abonat cu profil în Cabină le vede pe el însuși; ceilalți primesc newsletterul tău obișnuit.',
+          'nl.h1t': 'Produsele tale', 'nl.h1d': 'Linkul fiecărei pagini de produs — sau o poză pe care o încarci, cu numele și linkul ei.',
+          'nl.h2t': 'Lista ta', 'nl.h2d': 'Adresele la care trimiți. Nimeni nu trebuie să facă nimic nou.',
+          'nl.h3t': 'Un email pentru fiecare', 'nl.h3d': 'Abonații cu profil în Cabină văd produsele pe ei. Ceilalți primesc newsletterul tău obișnuit.',
+          'nl.urlPh': 'https://magazinul-tau.ro/produse/rochie-in', 'nl.products': 'Produse', 'nl.add': 'Adaugă produsul', 'nl.or': 'Sau', 'nl.upload': 'încarcă o poză de produs', 'nl.uploadHint': 'și adaugă-i numele și linkul.',
+          'nl.recipients': 'Destinatari', 'nl.message': 'Mesaj', 'nl.store': 'Numele magazinului', 'nl.subject': 'Subiect', 'nl.intro': 'Câteva cuvinte — opțional',
+          'nl.prepare': 'Pregătește newsletterul', 'nl.campaign': 'Newsletter', 'nl.outbox': 'De trimis', 'nl.readyToSend': 'gata de trimis',
+          'nl.outboxHint': 'Fiecare email așteaptă aici, gata scris, serviciul de email. Deschide unul ca să-l vezi cum îl va vedea destinatarul.',
+          'nl.to': 'Către', 'nl.version': 'Varianta', 'nl.status': 'Stare', 'nl.new': 'Newsletter nou', 'nl.history': 'Newsletterele tale',
+          'profile.email': 'Email — pentru newsletterele magazinelor (opțional)', 'profile.outfits': 'Ținutele tale',
           'footer': 'The Cabin · proba virtuală cu AI · © 2026',
           'foot.tag': 'Proba virtuală cu AI, pentru cine ești cu adevărat.',
           'foot.privacy': 'Confidențialitate', 'foot.terms': 'Termeni', 'foot.contact': 'Contact',
@@ -176,7 +192,7 @@ const FOOT_MENUS = ['product', 'developers', 'mkt', 'resources', 'company'];
           's2.t': '„Probează în Cabină”', 's2.d': 'Pe orice produs, butonul apare chiar lângă „Adaugă în coș”.',
           's3.t': 'Te vezi purtând‑o', 's3.d': 'În câteva secunde — iar proba rămâne salvată în Cabina ta.',
           'demo.try': 'Probează', 'demo.cart': 'Adaugă în coș',
-          'forms.title': 'Trei forme, un singur motor', 'forms.sub': 'Pentru cumpărători, pentru magazine și pentru designerii independenți.',
+          'forms.title': 'Patru forme, un singur motor', 'forms.sub': 'Pentru cumpărători, pentru magazine și pentru designerii independenți.',
           'ext.t': 'Extensie de browser', 'ext.d': 'Pentru cumpărători — funcționează pe orice site de modă, direct din browser, fără ca magazinul să facă ceva.',
           'sdk.t': 'SDK pentru magazine', 'sdk.d': 'O singură linie de cod. Se încarcă după pagină, fără impact pe viteză sau SEO. Pe orice dispozitiv, inclusiv iPhone.',
           'ext.cta': 'Instalează extensia ↓', 'sdk.cta': 'Exemplu live: magazin demo ↗', 'sdk.docs': 'Ghid de integrare →',
@@ -271,6 +287,9 @@ const FOOT_MENUS = ['product', 'developers', 'mkt', 'resources', 'company'];
             });
             document.querySelectorAll('[data-i18n-html]').forEach(function (el) {
               const k = el.getAttribute('data-i18n-html'); if (RO[k] != null) el.innerHTML = RO[k];
+            });
+            document.querySelectorAll('[data-i18n-ph]').forEach(function (el) {
+              const k = el.getAttribute('data-i18n-ph'); if (RO[k] != null) el.setAttribute('placeholder', RO[k]);
             });
           }
           document.querySelectorAll('[data-lang]').forEach(function (b) {

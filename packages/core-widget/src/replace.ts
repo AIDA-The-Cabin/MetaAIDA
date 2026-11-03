@@ -169,11 +169,16 @@ export function startReplacementObserver(): void {
   });
 }
 
-/** Put the store's photos back wherever the page still shows one of ours (an element the page moved on is left alone). */
-function restoreAll(): void {
+/**
+ * Put the store's photos back wherever the page still shows one of ours (an element the page moved on is left
+ * alone) — every swap, or only those `which` picks.
+ */
+function restoreAll(which: (s: Saved) => boolean = () => true): void {
   const set = (el: HTMLElement, name: string, v: string | null | undefined) =>
     v == null ? el.removeAttribute(name) : el.setAttribute(name, v);
   for (const [el, s] of swapped) {
+    if (!which(s)) continue;
+    swapped.delete(el);
     if (el instanceof HTMLImageElement) {
       if (el.getAttribute('src') === s.ours) {
         set(el, 'srcset', s.srcset);
@@ -191,8 +196,17 @@ function restoreAll(): void {
       el.style.backgroundImage = s.bg;
     }
   }
-  swapped.clear();
   listeners.forEach((f) => f());
+}
+
+/** A try-on the customer removed: the store's photo comes back wherever the page shows it. */
+export function forgetReplacement(originalUrl: string): void {
+  const id = photoId(originalUrl);
+  const ours = replacements.get(id);
+  replacements.delete(id);
+  const fk = fileKey(id);
+  if (fk && byFile.get(fk) === ours) byFile.delete(fk);
+  if (ours) restoreAll((s) => s.ours === ours);
 }
 
 /** Show the registered try-ons on the page (true) or the store's own photos (false), instantly. */

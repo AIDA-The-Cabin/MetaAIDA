@@ -1,7 +1,8 @@
 import { CabinApi } from './api';
 import { mountShadow } from './mount';
 import { createCabinButton, setButtonLoading, setButtonDone, setButtonError } from './button';
-import { cabinItems, panelOpen, profiles, activeProfileId, pageProgress, tryonStatus, type PageProgress } from './state';
+import { effect } from '@preact/signals';
+import { cabinItems, panelOpen, profiles, activeProfileId, pageProgress, tryonStatus, tryons, type PageProgress } from './state';
 import { lang, t } from './i18n';
 import { detectGallery } from './detect';
 import {
@@ -97,6 +98,11 @@ export interface CabinMountConfig {
   scope?: 'image' | 'page';
   /** The customer asked to see a try-on on the page (Try it on, whole-page conversion) — e.g. switch "Show my try-ons" on. */
   onShowTryons?: () => void;
+  /**
+   * The panel's try-ons from every store (the extension, in the customer's own browser). Off by default: on a
+   * store's own pages (the SDK) the panel shows only that store's try-ons.
+   */
+  allSites?: boolean;
 }
 
 export interface CabinProductRef {
@@ -124,6 +130,19 @@ export function mountCabin(cfg: CabinMountConfig): CabinController {
   const api = new CabinApi(cfg.apiBase);
   lang.value = cfg.lang ?? 'en';
   mountShadow(api);
+
+  // Every converted photo of the person (the panel's Try ons tab and the Cabin's bar): on load, each time the
+  // panel opens and after each new try-on — never on a timer.
+  const refreshTryons = async () => {
+    tryons.value = await api.listTryons(cfg.allSites ? undefined : location.host);
+  };
+  void refreshTryons();
+  let wasOpen = false;
+  effect(() => {
+    const open = panelOpen.value;
+    if (open && !wasOpen) void refreshTryons();
+    wasOpen = open;
+  });
 
   // Who is trying clothes on (avatar on the tab, name + switcher in the panel).
   void api.profiles().then((r) => {
@@ -187,6 +206,7 @@ export function mountCabin(cfg: CabinMountConfig): CabinController {
         .then((item) => {
           cabinItems.value = [item, ...cabinItems.value.filter((i) => i.id !== tmpId && i.id !== item.id)];
           applyResult(item.id, item.resultUrl, product.garmentImageUrl, btn);
+          void refreshTryons();
         })
         .catch(() => {
           cabinItems.value = cabinItems.value.filter((i) => i.id !== tmpId);
@@ -220,7 +240,7 @@ export function mountCabin(cfg: CabinMountConfig): CabinController {
         applyOur(g.url, item.resultUrl);
       };
       const runRest = async (g: { url: string }) => {
-        const res = await api.tryon(g.url, product.pageUrl, batchId);
+        const res = await api.tryon(g.url, product.pageUrl, batchId, { productUrl: product.pageUrl, name: product.name });
         applyOur(g.url, res.resultUrl);
       };
 
@@ -238,6 +258,7 @@ export function mountCabin(cfg: CabinMountConfig): CabinController {
       };
       Promise.allSettled(Array.from({ length: Math.min(4, ordered.length) }, worker)).then(() => {
         if (btn) setButtonDone(btn);
+        void refreshTryons();
       });
     },
 
@@ -325,7 +346,12 @@ export function mountCabin(cfg: CabinMountConfig): CabinController {
           while (next < todo.length && !p.stopped) {
             const photo = todo[next++];
             try {
-              const r = await api.tryon(photo.url, location.href, batchId, { sceneOnly: true, allPeople: true });
+              const r = await api.tryon(photo.url, location.href, batchId, {
+                sceneOnly: true,
+                allPeople: true,
+                productUrl: photo.link,
+                name: photo.name,
+              });
               if (r.status === 'done') {
                 applyOur(photo.url, r.resultUrl);
                 p.done++;
@@ -351,6 +377,7 @@ export function mountCabin(cfg: CabinMountConfig): CabinController {
       }
       p.running = false;
       show();
+      void refreshTryons();
     },
   };
 

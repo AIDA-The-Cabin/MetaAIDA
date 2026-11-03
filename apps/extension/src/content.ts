@@ -21,7 +21,8 @@ function turnShowOn() {
 /** The widget (Cabin tab + panel), mounted on first need: a product page, or a whole-page conversion. */
 function ensureCabin(): CabinController {
   if (!cabin) {
-    cabin = mountCabin({ apiBase: API_BASE, buttonMode: 'branded', fullPageEnabled: false, scope, onShowTryons: turnShowOn });
+    // allSites: in the customer's own browser the panel lists their try-ons from every store.
+    cabin = mountCabin({ apiBase: API_BASE, buttonMode: 'branded', fullPageEnabled: false, scope, onShowTryons: turnShowOn, allSites: true });
   }
   return cabin;
 }

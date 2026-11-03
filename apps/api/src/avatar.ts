@@ -66,7 +66,8 @@ export function closeupKey(tenantId: string, userId: string, photoId: string): s
   return `faces/${tenantId}/${userId}/${photoId}.jpg`;
 }
 
-async function loadPhoto(env: Env, db: DB, p: ProfileRow) {
+/** The profile's current photo (bytes + type), or null. */
+export async function loadPhoto(env: Env, db: DB, p: ProfileRow) {
   if (!p.primaryPhotoId) return null;
   const photo = await db.select().from(schema.userPhotos).where(eq(schema.userPhotos.id, p.primaryPhotoId)).get();
   const obj = photo ? await env.BUCKET.get(photo.r2Key) : null;

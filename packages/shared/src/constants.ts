@@ -25,4 +25,7 @@ export const ROUTES = {
   sdkBootstrap: `/${API_VERSION}/sdk/bootstrap`,
   adminUsage: `/${API_VERSION}/admin/usage`,
   convertPlan: `/${API_VERSION}/convert/plan`,
+  tryons: `/${API_VERSION}/tryons`,
+  outfits: `/${API_VERSION}/outfits`,
+  profileFigure: `/${API_VERSION}/profile/figure`,
 } as const;

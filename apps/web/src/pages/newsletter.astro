@@ -1,0 +1,559 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout title="Newsletter for stores — The Cabin">
+  <section class="hero nl-hero">
+    <p class="eyebrow" data-i18n="nl.eyebrow">For stores</p>
+    <h1 class="hero-title" data-i18n-html="nl.title">Your newsletter,<br /><em>worn by every subscriber</em></h1>
+    <p class="hero-sub" data-i18n="nl.sub">Pick a few products and paste your list. Every subscriber with a Cabin profile sees them on themselves; everyone else gets your regular newsletter.</p>
+  </section>
+
+  <div class="wrap nl">
+    <ol class="nl-how">
+      <li><span class="nl-n">1</span><div><h3 data-i18n="nl.h1t">Your products</h3><p data-i18n="nl.h1d">A link to each product page — or a photo you upload, with its name and link.</p></div></li>
+      <li><span class="nl-n">2</span><div><h3 data-i18n="nl.h2t">Your list</h3><p data-i18n="nl.h2d">The addresses you send to. Nobody has to do anything new.</p></div></li>
+      <li><span class="nl-n">3</span><div><h3 data-i18n="nl.h3t">One email each</h3><p data-i18n="nl.h3d">Subscribers with a Cabin profile see the products on themselves. The rest get your regular newsletter.</p></div></li>
+    </ol>
+
+    <form class="panel nl-form" id="nl-form" novalidate>
+      <div class="nl-block">
+        <h2 class="nl-h2"><span>1</span><b data-i18n="nl.products">Products</b></h2>
+        <div class="nl-add">
+          <input type="url" id="p-url" inputmode="url" autocomplete="off" placeholder="https://yourstore.com/products/linen-dress" data-i18n-ph="nl.urlPh" />
+          <button type="button" class="btn-ghost nl-btn" id="p-add" data-i18n="nl.add">Add product</button>
+        </div>
+        <p class="nl-hint"><span data-i18n="nl.or">Or</span> <label class="nl-upload"><span data-i18n="nl.upload">upload a product photo</span><input type="file" id="p-file" accept="image/jpeg,image/png,image/webp" hidden /></label> <span data-i18n="nl.uploadHint">and add its name and link.</span></p>
+        <p class="nl-msg" id="p-msg" role="status"></p>
+        <ul class="nl-products" id="products"></ul>
+      </div>
+
+      <div class="nl-block">
+        <h2 class="nl-h2"><span>2</span><b data-i18n="nl.recipients">Recipients</b></h2>
+        <textarea id="emails" rows="6" spellcheck="false" placeholder="ana@example.com&#10;mihai@example.com"></textarea>
+        <p class="nl-hint" id="emails-count"></p>
+      </div>
+
+      <div class="nl-block">
+        <h2 class="nl-h2"><span>3</span><b data-i18n="nl.message">Message</b></h2>
+        <div class="nl-row">
+          <div class="field"><label for="store" data-i18n="nl.store">Store name</label><input type="text" id="store" maxlength="80" /></div>
+          <div class="field"><label for="subject" data-i18n="nl.subject">Subject</label><input type="text" id="subject" maxlength="160" /></div>
+        </div>
+        <div class="field"><label for="intro" data-i18n="nl.intro">A few words — optional</label><textarea id="intro" rows="3" maxlength="1200"></textarea></div>
+      </div>
+
+      <div class="nl-go">
+        <button type="submit" class="btn-gold" id="prepare"><span aria-hidden="true">&#10022;</span> <span data-i18n="nl.prepare">Prepare the newsletter</span></button>
+        <p class="nl-msg" id="form-msg" role="status"></p>
+      </div>
+    </form>
+
+    <section class="panel nl-run" id="run" hidden aria-live="polite">
+      <p class="nl-cap" data-i18n="nl.campaign">Newsletter</p>
+      <h2 class="nl-run-title" id="run-title"></h2>
+      <div class="nl-chips" id="run-chips"></div>
+      <div class="nl-progress" id="run-progress">
+        <div class="nl-bar"><i id="run-bar"></i></div>
+        <p class="nl-hint" id="run-text"></p>
+      </div>
+      <div id="outbox-wrap" hidden>
+        <h3 class="nl-h3"><span data-i18n="nl.outbox">Outbox</span> <span class="nl-ready" data-i18n="nl.readyToSend">ready to send</span></h3>
+        <p class="nl-hint" data-i18n="nl.outboxHint">Every email waits here, rendered, for the mail service. Open one to see it as its recipient will.</p>
+        <div class="nl-table" role="table">
+          <div class="nl-tr nl-th" role="row"><span role="columnheader" data-i18n="nl.to">To</span><span role="columnheader" data-i18n="nl.version">Version</span><span role="columnheader" data-i18n="nl.status">Status</span><span role="columnheader"></span></div>
+          <div id="outbox"></div>
+        </div>
+      </div>
+      <div class="nl-run-foot"><button type="button" class="btn-ghost nl-btn" id="new-campaign" data-i18n="nl.new">New newsletter</button></div>
+    </section>
+
+    <section class="nl-history" id="history" hidden>
+      <h2 class="nl-h2 nl-h2-plain" data-i18n="nl.history">Your newsletters</h2>
+      <ul class="nl-list" id="history-list"></ul>
+    </section>
+  </div>
+
+  <script>
+    const API = import.meta.env.PUBLIC_API_BASE ?? '';
+    const L = ((window as any).__lang || 'en') as 'en' | 'ro';
+    const T = {
+      en: {
+        badUrl: 'Paste the full link of a product page (https://…).',
+        reading: 'Reading the product page…',
+        noImage: 'That page shows no product photo — upload one instead.',
+        unreachable: 'That page could not be read — paste the link of the product photo, or upload it.',
+        blocked: 'This store does not let a server read its pages. Paste the link of the product photo instead (right-click the photo → Copy image address), or upload it.',
+        fillIn: 'Photo added — now give it the product name and its link.',
+        uploading: 'Uploading the photo…',
+        uploadFail: 'The photo could not be uploaded.',
+        name: 'Product name',
+        price: 'Price — optional',
+        link: 'Product link',
+        remove: 'Remove',
+        count: (n: number, bad: number) => `${n} ${n === 1 ? 'address' : 'addresses'}` + (bad ? ` · ${bad} not valid` : ''),
+        needProducts: 'Add at least one product (with its name).',
+        needEmails: 'Add at least one valid address.',
+        needMessage: 'Fill in the store name and the subject.',
+        preparing: 'Preparing…',
+        failed: 'Something went wrong — try again.',
+        addresses: (n: number) => `${n} ${n === 1 ? 'address' : 'addresses'}`,
+        personal: (n: number) => `${n} styled on the subscriber`,
+        standard: (n: number) => `${n} regular`,
+        making: (d: number, t: number) => `Putting the products on your subscribers — ${d} of ${t} photos made…`,
+        made: (d: number, t: number, miss: number) => `${d} of ${t} photos made` + (miss ? ` · ${miss} kept the store photo` : '') + '.',
+        noneToMake: 'Nobody on this list has a Cabin profile yet: everyone gets the regular newsletter.',
+        building: 'Writing the emails…',
+        vPersonal: 'On the subscriber',
+        vStandard: 'Regular',
+        ready: 'Ready',
+        sent: 'Sent',
+        open: 'Open ↗',
+        cont: 'Continue',
+        statusReady: 'ready',
+        statusPreparing: 'in progress',
+      },
+      ro: {
+        badUrl: 'Lipește linkul complet al unei pagini de produs (https://…).',
+        reading: 'Citesc pagina produsului…',
+        noImage: 'Pagina nu are o poză de produs — încarcă tu una.',
+        unreachable: 'Pagina nu a putut fi citită — lipește linkul pozei produsului sau încarc-o.',
+        blocked: 'Magazinul nu lasă un server să-i citească paginile. Lipește în loc linkul pozei produsului (click dreapta pe poză → Copiază adresa imaginii) sau încarc-o.',
+        fillIn: 'Poza e adăugată — completează numele produsului și linkul lui.',
+        uploading: 'Încarc poza…',
+        uploadFail: 'Poza nu a putut fi încărcată.',
+        name: 'Numele produsului',
+        price: 'Preț — opțional',
+        link: 'Linkul produsului',
+        remove: 'Scoate',
+        count: (n: number, bad: number) => `${n} ${n === 1 ? 'adresă' : 'adrese'}` + (bad ? ` · ${bad} invalide` : ''),
+        needProducts: 'Adaugă cel puțin un produs (cu nume).',
+        needEmails: 'Adaugă cel puțin o adresă validă.',
+        needMessage: 'Completează numele magazinului și subiectul.',
+        preparing: 'Pregătesc…',
+        failed: 'Ceva n-a mers — încearcă din nou.',
+        addresses: (n: number) => `${n} ${n === 1 ? 'adresă' : 'adrese'}`,
+        personal: (n: number) => `${n} cu abonatul ca model`,
+        standard: (n: number) => `${n} obișnuite`,
+        making: (d: number, t: number) => `Pun produsele pe abonați — ${d} din ${t} poze gata…`,
+        made: (d: number, t: number, miss: number) => `${d} din ${t} poze gata` + (miss ? ` · ${miss} au rămas cu poza magazinului` : '') + '.',
+        noneToMake: 'Nimeni de pe listă nu are încă profil în Cabină: toți primesc newsletterul obișnuit.',
+        building: 'Scriu emailurile…',
+        vPersonal: 'Cu abonatul ca model',
+        vStandard: 'Obișnuit',
+        ready: 'Gata',
+        sent: 'Trimis',
+        open: 'Deschide ↗',
+        cont: 'Continuă',
+        statusReady: 'gata',
+        statusPreparing: 'în lucru',
+      },
+    }[L];
+
+    const $ = <E extends HTMLElement = HTMLElement>(s: string) => document.querySelector(s) as E;
+    const EMAIL = /^[^\s@,;<>]+@[^\s@,;<>]+\.[a-z]{2,}$/i;
+
+    interface Product { name: string; imageUrl: string; productUrl: string; price: string }
+    const products: Product[] = [];
+
+    const esc = (v: string) => v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const say = (el: HTMLElement, text: string, bad = false) => {
+      el.textContent = text;
+      el.classList.toggle('bad', bad);
+    };
+
+    async function api<R = any>(path: string, init?: RequestInit): Promise<R> {
+      const r = await fetch(API + path, init);
+      const text = await r.text();
+      let j: any = {};
+      try { j = JSON.parse(text); } catch { /* Cloudflare's own error page */ }
+      if (!r.ok) throw Object.assign(new Error(j.detail || j.error || `${r.status}`), { status: r.status, code: j.error });
+      return j as R;
+    }
+    const post = <R = any>(path: string, body: unknown) =>
+      api<R>(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+
+    // ── products ──
+    function renderProducts() {
+      const box = $('#products');
+      box.innerHTML = products
+        .map(
+          (p, i) => `<li class="nl-p" data-i="${i}">
+  <div class="nl-p-img"><img src="${esc(p.imageUrl)}" alt="" loading="lazy" /><button type="button" class="nl-p-x" data-rm="${i}" aria-label="${T.remove}">&#10005;</button></div>
+  <input type="text" data-k="name" value="${esc(p.name)}" placeholder="${T.name}" maxlength="160" aria-label="${T.name}" />
+  <input type="text" data-k="price" value="${esc(p.price)}" placeholder="${T.price}" maxlength="40" aria-label="${T.price}" />
+  <input type="url" data-k="productUrl" value="${esc(p.productUrl)}" placeholder="${T.link}" aria-label="${T.link}" />
+</li>`,
+        )
+        .join('');
+    }
+    $('#products').addEventListener('input', (e) => {
+      const el = e.target as HTMLInputElement;
+      const li = el.closest('.nl-p') as HTMLElement | null;
+      if (!li || !el.dataset.k) return;
+      (products[+li.dataset.i!] as any)[el.dataset.k] = el.value;
+    });
+    $('#products').addEventListener('click', (e) => {
+      const rm = (e.target as HTMLElement).closest('[data-rm]') as HTMLElement | null;
+      if (!rm) return;
+      products.splice(+rm.dataset.rm!, 1);
+      renderProducts();
+    });
+
+    async function addByUrl() {
+      const input = $<HTMLInputElement>('#p-url');
+      const url = input.value.trim();
+      const msg = $('#p-msg');
+      if (!/^https?:\/\/\S+\.\S+/.test(url)) return say(msg, T.badUrl, true);
+      say(msg, T.reading);
+      $<HTMLButtonElement>('#p-add').disabled = true;
+      try {
+        const p = await post<{ name?: string; imageUrl?: string; productUrl: string; price?: string }>('/v1/newsletter/preview', { url });
+        if (!p.imageUrl) return say(msg, T.noImage, true);
+        const photoOnly = !p.productUrl; // the link was the photo itself
+        products.push({ name: p.name ?? '', imageUrl: p.imageUrl, productUrl: photoOnly ? '' : p.productUrl, price: p.price ?? '' });
+        input.value = '';
+        say(msg, photoOnly ? T.fillIn : '');
+        renderProducts();
+        if (photoOnly) ($('#products').lastElementChild?.querySelector('input[data-k="name"]') as HTMLInputElement | null)?.focus();
+      } catch (e) {
+        say(msg, (e as any).code === 'blocked' ? T.blocked : T.unreachable, true);
+      } finally {
+        $<HTMLButtonElement>('#p-add').disabled = false;
+      }
+    }
+    $('#p-add').addEventListener('click', addByUrl);
+    $('#p-url').addEventListener('keydown', (e) => {
+      if ((e as KeyboardEvent).key === 'Enter') {
+        e.preventDefault();
+        void addByUrl();
+      }
+    });
+
+    // A store photo is sent at most 1600 px on its long side (JPEG): plenty for the try-on and the email.
+    function shrink(file: File, max = 1600): Promise<Blob> {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          const k = Math.min(1, max / Math.max(img.width, img.height));
+          const c = document.createElement('canvas');
+          c.width = Math.round(img.width * k);
+          c.height = Math.round(img.height * k);
+          c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height);
+          c.toBlob((b) => (b ? resolve(b) : reject(new Error('encode'))), 'image/jpeg', 0.9);
+        };
+        img.onerror = () => reject(new Error('decode'));
+        img.src = URL.createObjectURL(file);
+      });
+    }
+    $('#p-file').addEventListener('change', async (e) => {
+      const input = e.target as HTMLInputElement;
+      const file = input.files?.[0];
+      input.value = '';
+      if (!file) return;
+      const msg = $('#p-msg');
+      say(msg, T.uploading);
+      try {
+        const blob = await shrink(file);
+        const r = await api<{ imageUrl: string }>('/v1/newsletter/upload', { method: 'POST', headers: { 'Content-Type': 'image/jpeg' }, body: blob });
+        products.push({ name: file.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ').trim(), imageUrl: r.imageUrl, productUrl: '', price: '' });
+        say(msg, '');
+        renderProducts();
+        ($('#products').lastElementChild?.querySelector('input[data-k="name"]') as HTMLInputElement | null)?.select();
+      } catch {
+        say(msg, T.uploadFail, true);
+      }
+    });
+
+    // ── recipients ──
+    const emailsOf = () => {
+      const all = $<HTMLTextAreaElement>('#emails').value.split(/[\s,;]+/).map((x) => x.trim().toLowerCase()).filter(Boolean);
+      const ok = [...new Set(all.filter((x) => EMAIL.test(x)))];
+      return { ok, bad: all.filter((x) => !EMAIL.test(x)).length };
+    };
+    const countEmails = () => {
+      const { ok, bad } = emailsOf();
+      say($('#emails-count'), ok.length || bad ? T.count(ok.length, bad) : '', bad > 0);
+    };
+    $('#emails').addEventListener('input', countEmails);
+
+    // ── a campaign: make the try-ons (a few at a time), then write the emails ──
+    interface Detail {
+      id: string; storeName: string; subject: string; status: string;
+      recipients: Array<{ id: string; email: string; kind: string; made: number; missed: number; outboxId?: string; outboxStatus?: string }>;
+      jobs: Array<{ recipientId: string; productId: string }>;
+      total: number;
+    }
+    let current: Detail | null = null;
+    let running = false;
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+    function showRun(d: Detail) {
+      current = d;
+      $('#run').hidden = false;
+      $('#run-title').textContent = d.subject;
+      const personal = d.recipients.filter((r) => r.kind === 'personal').length;
+      $('#run-chips').innerHTML = [
+        `<span class="nl-chip">${T.addresses(d.recipients.length)}</span>`,
+        `<span class="nl-chip nl-chip-gold">&#10022; ${T.personal(personal)}</span>`,
+        `<span class="nl-chip">${T.standard(d.recipients.length - personal)}</span>`,
+      ].join('');
+    }
+    function progress(done: number, total: number, miss: number, live: boolean) {
+      $('#run-progress').hidden = false;
+      $<HTMLElement>('#run-bar').style.width = total ? `${Math.round((done / total) * 100)}%` : '100%';
+      $('#run-bar').classList.toggle('live', live);
+      $('#run-text').textContent = !total ? T.noneToMake : live ? T.making(done, total) : T.made(done - miss, total, miss);
+    }
+    function renderOutbox(d: Detail) {
+      const rows = d.recipients
+        .map((r) => {
+          const personal = r.kind === 'personal' && r.made > 0;
+          return `<div class="nl-tr" role="row">
+  <span role="cell" class="nl-to">${esc(r.email)}</span>
+  <span role="cell"><span class="nl-v${personal ? ' nl-v-gold' : ''}">${personal ? '&#10022; ' + T.vPersonal : T.vStandard}</span></span>
+  <span role="cell" class="nl-st">${r.outboxStatus === 'sent' ? T.sent : r.outboxId ? T.ready : '—'}</span>
+  <span role="cell">${r.outboxId ? `<a class="nl-open" href="${API}/v1/newsletter/outbox/${r.outboxId}" target="_blank" rel="noopener">${T.open}</a>` : ''}</span>
+</div>`;
+        })
+        .join('');
+      $('#outbox').innerHTML = rows;
+      $('#outbox-wrap').hidden = false;
+    }
+
+    async function drive(d: Detail) {
+      if (running) return;
+      running = true;
+      showRun(d);
+      $('#outbox-wrap').hidden = true;
+      const queue = [...d.jobs];
+      const total = d.total;
+      let done = total - queue.length;
+      let miss = d.recipients.reduce((a, r) => a + r.missed, 0);
+      progress(done, total, miss, queue.length > 0);
+      const tries = new Map<string, number>();
+      const worker = async () => {
+        while (queue.length) {
+          const job = queue.shift()!;
+          const key = job.recipientId + job.productId;
+          try {
+            const r = await post<{ status: string }>(`/v1/newsletter/campaigns/${d.id}/run`, job);
+            if (r.status !== 'done') miss++;
+            done++;
+          } catch (e) {
+            const n = tries.get(key) ?? 0;
+            // The Worker was busy or ran out of time: that pair goes back in line, twice at most.
+            if (n < 2 && ((e as any).status >= 500 || (e as any).status === 429)) {
+              tries.set(key, n + 1);
+              queue.push(job);
+              await sleep(8000);
+              continue;
+            }
+            miss++;
+            done++;
+          }
+          progress(done, total, miss, true);
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(2, queue.length) }, worker));
+      progress(done, total, miss, false);
+      $('#run-text').textContent = (total ? $('#run-text').textContent + ' ' : '') + T.building;
+      try {
+        await post(`/v1/newsletter/campaigns/${d.id}/build`, {});
+        const fresh = await api<Detail>(`/v1/newsletter/campaigns/${d.id}`);
+        showRun(fresh);
+        const made = fresh.recipients.reduce((a, r) => a + r.made, 0);
+        const missed = fresh.recipients.reduce((a, r) => a + r.missed, 0);
+        progress(fresh.total, fresh.total, fresh.total - made, false);
+        if (!fresh.total) $('#run-text').textContent = T.noneToMake;
+        else if (missed === 0) $('#run-text').textContent = T.made(made, fresh.total, fresh.total - made);
+        renderOutbox(fresh);
+      } catch {
+        $('#run-text').textContent = T.failed;
+      }
+      running = false;
+      void loadHistory();
+    }
+
+    $('#nl-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (running) return;
+      const msg = $('#form-msg');
+      const list = products.filter((p) => p.name.trim() && p.imageUrl);
+      const { ok } = emailsOf();
+      const store = $<HTMLInputElement>('#store').value.trim();
+      const subject = $<HTMLInputElement>('#subject').value.trim();
+      if (!list.length) return say(msg, T.needProducts, true);
+      if (!ok.length) return say(msg, T.needEmails, true);
+      if (!store || !subject) return say(msg, T.needMessage, true);
+      say(msg, T.preparing);
+      $<HTMLButtonElement>('#prepare').disabled = true;
+      try {
+        const d = await post<Detail>('/v1/newsletter/campaigns', {
+          storeName: store,
+          subject,
+          intro: $<HTMLTextAreaElement>('#intro').value.trim() || undefined,
+          products: list.map((p) => ({
+            name: p.name.trim(),
+            imageUrl: p.imageUrl,
+            productUrl: /^https?:\/\//.test(p.productUrl.trim()) ? p.productUrl.trim() : undefined,
+            price: p.price.trim() || undefined,
+          })),
+          recipients: ok,
+        });
+        say(msg, '');
+        $('#nl-form').hidden = true;
+        $('#run').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        await drive(d);
+      } catch {
+        say(msg, T.failed, true);
+      } finally {
+        $<HTMLButtonElement>('#prepare').disabled = false;
+      }
+    });
+
+    $('#new-campaign').addEventListener('click', () => {
+      if (running) return;
+      $('#run').hidden = true;
+      $('#nl-form').hidden = false;
+      $('#nl-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+
+    // ── earlier newsletters ──
+    async function open(id: string) {
+      if (running) return;
+      const d = await api<Detail>(`/v1/newsletter/campaigns/${id}`);
+      $('#nl-form').hidden = true;
+      if (d.jobs.length || d.status !== 'ready') return drive(d);
+      showRun(d);
+      const made = d.recipients.reduce((a, r) => a + r.made, 0);
+      progress(d.total, d.total, d.total - made, false);
+      if (!d.total) $('#run-text').textContent = T.noneToMake;
+      renderOutbox(d);
+      $('#run').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    async function loadHistory() {
+      try {
+        const { items } = await api<{ items: Array<{ id: string; storeName: string; subject: string; status: string; recipients: number; personal: number }> }>('/v1/newsletter/campaigns');
+        $('#history').hidden = !items.length;
+        $('#history-list').innerHTML = items
+          .map(
+            (c) => `<li><button type="button" class="nl-item" data-open="${c.id}">
+  <span class="nl-item-main"><b>${esc(c.subject)}</b><span>${esc(c.storeName)} · ${T.addresses(c.recipients)} · &#10022; ${c.personal}</span></span>
+  <span class="nl-item-st${c.status === 'ready' ? ' ok' : ''}">${c.status === 'ready' ? T.statusReady : T.statusPreparing}</span>
+</button></li>`,
+          )
+          .join('');
+      } catch {
+        /* the page works without the list */
+      }
+    }
+    $('#history-list').addEventListener('click', (e) => {
+      const b = (e.target as HTMLElement).closest('[data-open]') as HTMLElement | null;
+      if (b) void open(b.dataset.open!);
+    });
+
+    countEmails();
+    void loadHistory();
+  </script>
+</Layout>
+
+<style is:global>
+  .nl [hidden] { display: none !important; }
+  .nl-hero { padding-bottom: 26px; }
+  .nl { max-width: 980px; padding-bottom: 40px; }
+  .nl-how { list-style: none; margin: 0 0 26px; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+  .nl-how li { display: flex; gap: 14px; align-items: flex-start; padding: 18px; border-radius: 16px; background: var(--cabin-bg-surface); border: 1px solid var(--cabin-border); }
+  .nl-how h3 { margin: 2px 0 4px; font-family: var(--serif); font-size: 20px; font-weight: 500; }
+  .nl-how p { margin: 0; font-size: 13.5px; line-height: 1.55; color: var(--cabin-text-mid); }
+  .nl-n { flex: none; width: 30px; height: 30px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 600; color: var(--cabin-bg-base); background: var(--cabin-gold-button); }
+
+  .nl-form { display: flex; flex-direction: column; gap: 30px; }
+  .nl-block { display: flex; flex-direction: column; gap: 12px; }
+  .nl-h2 { display: flex; align-items: center; gap: 12px; margin: 0; font-family: var(--serif); font-size: 26px; font-weight: 500; }
+  .nl-h2 b { font-weight: 500; }
+  .nl-h2 span { width: 28px; height: 28px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; flex: none;
+    font-family: var(--sans, inherit); font-size: 12px; font-weight: 600; color: var(--cabin-gold-300); border: 1px solid var(--cabin-border-gold); }
+  .nl-h2-plain { margin-bottom: 14px; }
+  .nl-add { display: flex; gap: 10px; }
+  .nl-add input { flex: 1; min-width: 0; }
+  .nl input[type='url'], .nl textarea { width: 100%; padding: 0 14px; border-radius: 10px; background: var(--cabin-bg-inset);
+    border: 1px solid var(--cabin-border); color: var(--cabin-text-hi); font: inherit; font-size: 15px; }
+  .nl input[type='url'] { height: 44px; }
+  .nl textarea { padding: 12px 14px; line-height: 1.5; resize: vertical; min-height: 90px; }
+  .nl input:focus, .nl textarea:focus { outline: none; border-color: var(--cabin-gold-700); box-shadow: 0 0 0 3px rgba(201, 162, 75, 0.14); }
+  .nl-btn { height: 44px; padding: 0 18px; background: transparent; font: inherit; font-size: 14px; white-space: nowrap; }
+  .nl-btn:disabled { opacity: 0.5; cursor: default; }
+  .nl-hint { margin: 0; font-size: 13px; color: var(--cabin-text-low); }
+  .nl-hint.bad, .nl-msg.bad { color: #e3a0a0; }
+  .nl-msg { margin: 0; min-height: 0; font-size: 13px; color: var(--cabin-gold-300); }
+  .nl-msg:empty { display: none; }
+  .nl-upload { color: var(--cabin-gold-300); cursor: pointer; text-decoration: underline; text-decoration-color: rgba(201, 162, 75, 0.5); text-underline-offset: 4px; }
+  .nl-upload:hover { color: var(--cabin-gold-100); }
+  .nl-products { list-style: none; margin: 4px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; }
+  .nl-products:empty { display: none; }
+  .nl-p { display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: 14px; background: var(--cabin-bg-elevated); border: 1px solid var(--cabin-border); }
+  .nl-p-img { position: relative; aspect-ratio: 3 / 4; border-radius: 10px; overflow: hidden; background: #000; }
+  .nl-p-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .nl-p-x { position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; border-radius: 50%; border: 1px solid rgba(255, 255, 255, 0.25);
+    background: rgba(8, 9, 10, 0.6); color: #fff; cursor: pointer; font-size: 11px; backdrop-filter: blur(6px); }
+  .nl-p-x:hover { background: #5a2b2b; }
+  .nl-p input { height: 36px !important; font-size: 13px !important; padding: 0 10px !important; }
+  .nl-row { display: grid; grid-template-columns: 1fr 1.6fr; gap: 14px; }
+  .nl-row .field, .nl-block .field { margin: 0; }
+  .nl-go { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding-top: 4px; border-top: 1px solid var(--cabin-border); padding-top: 22px; }
+  .nl-go .btn-gold:disabled { opacity: 0.6; cursor: default; }
+
+  .nl-run { margin-top: 6px; scroll-margin-top: 90px; }
+  .nl-cap { margin: 0 0 6px; font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--cabin-gold-300); }
+  .nl-run-title { margin: 0 0 14px; font-family: var(--serif); font-size: clamp(24px, 3.4vw, 32px); font-weight: 500; }
+  .nl-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+  .nl-chip { padding: 6px 12px; border-radius: 999px; font-size: 13px; color: var(--cabin-text-mid); background: var(--cabin-bg-elevated); border: 1px solid var(--cabin-border); }
+  .nl-chip-gold { color: var(--cabin-gold-100); border-color: var(--cabin-border-gold); }
+  .nl-progress { display: flex; flex-direction: column; gap: 10px; margin-bottom: 24px; }
+  .nl-bar { height: 8px; border-radius: 999px; background: var(--cabin-bg-inset); border: 1px solid var(--cabin-border); overflow: hidden; }
+  .nl-bar i { display: block; height: 100%; width: 0; border-radius: inherit; background: var(--cabin-gold-button); transition: width 0.6s var(--cabin-ease); }
+  .nl-bar i.live { background: linear-gradient(90deg, #9c7a2e, #e7c977, #ef7aaa, #8370ff, #e7c977, #9c7a2e); background-size: 300% 100%; animation: nl-flow 2.4s linear infinite; }
+  @keyframes nl-flow { to { background-position: -300% 0; } }
+  .nl-h3 { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 6px; font-family: var(--serif); font-size: 22px; font-weight: 500; }
+  .nl-ready { font-family: var(--sans, inherit); font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: #9ad6a8;
+    padding: 3px 9px; border-radius: 999px; border: 1px solid rgba(154, 214, 168, 0.35); }
+  .nl-table { margin-top: 14px; border: 1px solid var(--cabin-border); border-radius: 14px; overflow: hidden; }
+  .nl-tr { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1.2fr) 80px 90px; gap: 12px; align-items: center; padding: 12px 16px;
+    border-top: 1px solid var(--cabin-border); font-size: 14px; }
+  .nl-th { border-top: 0; background: var(--cabin-bg-elevated); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--cabin-text-low); }
+  .nl-to { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--cabin-text-hi); }
+  .nl-v { font-size: 13px; color: var(--cabin-text-mid); }
+  .nl-v-gold { color: var(--cabin-gold-300); }
+  .nl-st { font-size: 13px; color: #9ad6a8; }
+  .nl-open { font-size: 13px; color: var(--cabin-gold-300); text-decoration: none; white-space: nowrap; }
+  .nl-open:hover { color: var(--cabin-gold-100); }
+  .nl-run-foot { margin-top: 22px; }
+
+  .nl-history { margin-top: 46px; }
+  .nl-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+  .nl-item { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 18px; border-radius: 14px;
+    background: var(--cabin-bg-surface); border: 1px solid var(--cabin-border); color: var(--cabin-text-hi); cursor: pointer; text-align: left; font: inherit;
+    transition: border-color 0.2s var(--cabin-ease); }
+  .nl-item:hover { border-color: var(--cabin-gold-700); }
+  .nl-item-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  .nl-item-main b { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .nl-item-main span { font-size: 13px; color: var(--cabin-text-low); }
+  .nl-item-st { flex: none; font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--cabin-text-low); }
+  .nl-item-st.ok { color: #9ad6a8; }
+
+  @media (max-width: 760px) {
+    .nl-how { grid-template-columns: 1fr; gap: 10px; }
+    .nl-row { grid-template-columns: 1fr; }
+    .nl-add { flex-direction: column; }
+    .nl-add .nl-btn { width: 100%; justify-content: center; }
+    .nl-products { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .nl-tr { grid-template-columns: minmax(0, 1fr) auto; row-gap: 6px; }
+    .nl-th { display: none; }
+    .nl-tr > span:nth-child(3) { display: none; }
+    .nl-tr > span:nth-child(2) { justify-self: end; }
+    .nl-tr > span:nth-child(4) { grid-column: 1 / -1; }
+    .nl-go .btn-gold { width: 100%; justify-content: center; }
+  }
+</style>

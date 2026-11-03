@@ -334,3 +334,71 @@ export async function metaSceneTryon(
   // `crop: false`: the caller crops only the candidate it keeps (each crop decodes and re-encodes ~1.5 MP).
   return scene.box && opts.crop !== false ? cropBack(out, scene.box) : out;
 }
+
+// ── Outfits (the Cabin): the customer's OWN photo, redrawn wearing pieces taken from several try-ons. ──
+// Every piece photo is a try-on, so its piece already sits on the customer's body; the photo they uploaded stays
+// the base (their pose, framing, background and light), and only the pieces they dropped on the figure change.
+
+export type OutfitSlot = 'hat' | 'jewelry' | 'top' | 'bottoms' | 'shoes';
+
+/** What to take from a piece photo dropped on each zone of the figure. */
+export const SLOT_PIECE: Record<OutfitSlot, string> = {
+  hat: 'the hat or headwear',
+  jewelry: 'the jewelry (necklace, earrings, bracelets and rings)',
+  top: 'the top: the upper-body garments as they are layered there (top, shirt, sweater, jacket or coat)',
+  bottoms: 'the bottoms: the trousers, jeans, skirt or shorts',
+  shoes: 'the shoes',
+};
+
+const outfitRules = [
+  "You are a virtual fitting room. You redraw the customer's own photo (image A) with the customer wearing pieces taken from other photos. Every rule below is mandatory.",
+  'IDENTITY - the same person as image A: the face, facial features, expression, hair (colour, length, texture) and skin tone exactly as in images A and A2.',
+  "BODY - the customer's body exactly as it is in image A: the same build, proportions and size - the same width of the shoulders, arms, torso, waist, hips and legs relative to their height. Never slimmer and never larger than in image A. A figure in a piece photo may look slimmer or larger: take only the piece, never that figure's outline. The pieces keep their cut and are worn by the customer's own body, fitting and folding the way they would on it.",
+  "POSE AND SCENE - exactly image A's pose and facing direction, its camera framing and crop, background, floor, light and colour grading. The figure stays where it is in image A. Never mirror or flip anything.",
+  'PIECES - from each piece photo take only the piece its caption names: its cut, colour, pattern, fabric, length and every detail. Ignore everything else in a piece photo: the other clothes, the person, the pose, the background.',
+  'UNCHANGED - every garment, shoe and accessory of image A that no piece replaces stays exactly as it is in image A.',
+  'ANATOMY - one physically possible person: two arms, two hands with five fingers each, two legs, two feet, natural joints.',
+  'TEXT - add no text, logo, watermark or border, and no grey box remains.',
+].join('\n');
+
+/**
+ * One outfit candidate: the customer's photo (`base`, prepared like a store photo — padded to an accepted
+ * size) redrawn with the pieces. Not cropped: the caller crops only the candidate it keeps.
+ */
+export async function metaOutfit(
+  env: Env,
+  base: PreparedScene,
+  faceDataUri: string | null,
+  pieces: Array<{ slot: OutfitSlot; dataUri: string }>,
+  endUser: string,
+  notes: string[] = [],
+): Promise<MetaImage> {
+  const content: Array<Record<string, string>> = [
+    { type: 'input_text', text: "Image A - the customer, full body: their own photo, the one to redraw." },
+    { type: 'input_image', image_url: base.dataUri },
+  ];
+  if (faceDataUri) content.push({ type: 'input_text', text: SCENE_A2 }, { type: 'input_image', image_url: faceDataUri });
+  pieces.forEach((p, i) => {
+    content.push(
+      { type: 'input_text', text: `Piece photo ${i + 1} - take only ${SLOT_PIECE[p.slot]} from it.` },
+      { type: 'input_image', image_url: p.dataUri },
+    );
+  });
+  const wearing = pieces.map((p, i) => `${SLOT_PIECE[p.slot].split(':')[0]} from piece photo ${i + 1}`).join(', ');
+  content.push({
+    type: 'input_text',
+    text: `Redraw image A with the customer wearing ${wearing}, with exactly the body of image A, following every rule.` + (notes.length ? ` ${notes.join(' ')}` : ''),
+  });
+  const format = base.box ? 'jpeg' : 'webp';
+  const tool: Record<string, unknown> = { type: 'image_generation', output_format: format, ...TOOLS_OFF };
+  if (base.size) tool.size = base.size;
+  return callMeta(
+    env,
+    '/responses',
+    { model: META_IMAGE_MODEL, instructions: outfitRules, input: [{ role: 'user', content }], tools: [tool], store: false, safety_identifier: endUser },
+    (j) => {
+      const item = (j.output ?? []).find((o: any) => o.type === 'image_generation_call' && o.result);
+      return { b64: item?.result, format };
+    },
+  );
+}

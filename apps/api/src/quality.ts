@@ -285,3 +285,114 @@ export function failedReason(verdicts: CandidateVerdict[]): string {
     .filter(Boolean)
     .join(', ');
 }
+
+// ── Outfits (the Cabin): candidates of the customer's own photo dressed in pieces from several try-ons. ──
+
+export interface OutfitVerdict {
+  body: BodyVs;
+  faceOk: boolean;
+  anatomyOk: boolean;
+  sceneOk: boolean;
+  piecesOk: boolean;
+}
+
+const OUTFIT_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['candidates', 'best'],
+  properties: {
+    candidates: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['number', 'body', 'face_is_customer', 'anatomy_ok', 'scene_ok', 'pieces_ok'],
+        properties: {
+          number: { type: 'integer' },
+          body: { type: 'string', enum: BODY_VS },
+          face_is_customer: { type: 'boolean' },
+          anatomy_ok: { type: 'boolean' },
+          scene_ok: { type: 'boolean' },
+          pieces_ok: { type: 'boolean' },
+        },
+      },
+    },
+    best: { type: 'integer' },
+  },
+};
+
+const outfitTask = (count: number) =>
+  `The ${count} candidates redraw image 0 with the customer wearing the pieces: each must show the customer of image 0 - their face and hair, and exactly their body - in image 0's pose and scene, wearing every piece.\n` +
+  'Compare the candidates with image 0 and with each other. Scale everything by the size of the head, so camera distance does not matter. For the body, imagine the customer of image 0 in the clothes of the candidate: skin that image 0 covers must look as it would really look on that same body - not exaggerated, not slimmed. Loose clothes are not body: where they hide the outline, judge by what still shows - the width of the shoulders, neck, wrists and hands, and how wide the whole figure is compared with the head.\n' +
+  'For each candidate:\n' +
+  `- body: ${BODY_VS.join(', ')} than the customer in image 0;\n` +
+  "- face_is_customer: the face and hair are the customer's;\n" +
+  '- anatomy_ok: a physically possible body with the right number of arms, hands, legs and feet, natural joints and hands;\n' +
+  "- scene_ok: image 0's pose, facing direction, camera framing/crop and background, not mirrored;\n" +
+  '- pieces_ok: every piece is worn and matches its photo (cut, colour, pattern, length, details), and what no piece replaces is kept from image 0.\n' +
+  'Then best: the number of the candidate closest to the customer that has no defect (0 if none).';
+
+const keptOutfit = (v: OutfitVerdict) => v.body === 'the same' && v.faceOk && v.anatomyOk && v.sceneOk && v.piecesOk;
+
+/** Compare outfit candidates with the customer's photo and keep the closest one without a defect. */
+export async function pickOutfit(
+  env: Env,
+  bodyDataUri: string,
+  pieces: Array<{ label: string; dataUri: string }>,
+  candidates: string[],
+): Promise<{ index: number; verdicts: OutfitVerdict[] }> {
+  const content: Array<Record<string, string>> = [
+    { type: 'input_text', text: "IMAGE 0 - the customer's own photo: their real face and body, the base of the outfit." },
+    { type: 'input_image', image_url: bodyDataUri },
+  ];
+  pieces.forEach((p, i) => content.push({ type: 'input_text', text: `PIECE ${i + 1} - ${p.label} comes from this photo.` }, { type: 'input_image', image_url: p.dataUri }));
+  candidates.forEach((c, i) => content.push({ type: 'input_text', text: `CANDIDATE ${i + 1}` }, { type: 'input_image', image_url: c }));
+  content.push({ type: 'input_text', text: outfitTask(candidates.length) });
+  const q = await spark<{
+    candidates: Array<{ number: number; body: BodyVs; face_is_customer: boolean; anatomy_ok: boolean; scene_ok: boolean; pieces_ok: boolean }>;
+    best: number;
+  }>(env, content, 'outfit', OUTFIT_SCHEMA, 'high');
+  const verdicts: OutfitVerdict[] = candidates.map((_, i) => {
+    const a = q.candidates.find((c) => c.number === i + 1);
+    return a
+      ? { body: a.body, faceOk: a.face_is_customer, anatomyOk: a.anatomy_ok, sceneOk: a.scene_ok, piecesOk: a.pieces_ok }
+      : { body: 'much slimmer', faceOk: false, anatomyOk: false, sceneOk: false, piecesOk: false };
+  });
+  let index = q.best - 1;
+  if (!(index >= 0 && index < verdicts.length && keptOutfit(verdicts[index]))) index = verdicts.findIndex(keptOutfit);
+  return { index, verdicts };
+}
+
+/** Fixed instructions for a second round, from what every outfit candidate of the first one got wrong. */
+export function outfitNotes(verdicts: OutfitVerdict[]): string[] {
+  const n: string[] = [];
+  const all = (f: (v: OutfitVerdict) => boolean) => verdicts.length > 0 && verdicts.every(f);
+  const most = (f: (v: OutfitVerdict) => boolean) => verdicts.filter(f).length * 2 > verdicts.length;
+  if (all((v) => v.body.includes('slimmer'))) {
+    n.push("Every attempt came out slimmer than the customer in image A: draw the customer's own body exactly as image A shows it, not slimmer and not larger.");
+  } else if (all((v) => v.body.includes('larger'))) {
+    n.push("Every attempt came out larger than the customer in image A: draw the customer's own body exactly as image A shows it, not larger and not slimmer.");
+  }
+  if (most((v) => !v.faceOk)) n.push("The face and hair must be the customer's from images A and A2.");
+  if (most((v) => !v.sceneOk)) n.push("Keep image A's exact pose, facing direction, camera framing, crop and background; never mirror it.");
+  if (most((v) => !v.anatomyOk)) n.push('The body must be physically possible, with two arms, two hands, two legs and two feet.');
+  if (most((v) => !v.piecesOk)) n.push('Every piece must be worn exactly as its photo shows it, and everything no piece replaces stays as in image A.');
+  return n;
+}
+
+/** Short reason kept with an outfit no candidate of which was kept. */
+export function outfitFailedReason(verdicts: OutfitVerdict[]): string {
+  const count = (f: (v: OutfitVerdict) => boolean) => verdicts.filter(f).length;
+  return [
+    ...BODY_VS.filter((b) => b !== 'the same')
+      .map((b) => [b, count((v) => v.body === b)] as const)
+      .filter(([, k]) => k)
+      .map(([b, k]) => `body ${b} ×${k}`),
+    count((v) => !v.faceOk) && `face ×${count((v) => !v.faceOk)}`,
+    count((v) => !v.sceneOk) && `pose ×${count((v) => !v.sceneOk)}`,
+    count((v) => !v.anatomyOk) && `anatomy ×${count((v) => !v.anatomyOk)}`,
+    count((v) => !v.piecesOk) && `pieces ×${count((v) => !v.piecesOk)}`,
+  ]
+    .filter(Boolean)
+    .join(', ');
+}

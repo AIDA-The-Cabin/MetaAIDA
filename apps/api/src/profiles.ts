@@ -24,6 +24,8 @@ export async function createProfile(db: DB, userId: string, name: string | null)
     gender: null,
     createdAt: now,
     updatedAt: now,
+    email: null,
+    figure: null,
   };
   await db.insert(schema.profiles).values(row).run();
   return row;
