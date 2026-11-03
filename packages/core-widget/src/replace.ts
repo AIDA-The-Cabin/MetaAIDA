@@ -196,13 +196,34 @@ export function isShowing(): boolean {
   return showing;
 }
 
-/** How many different photos on the page show a try-on right now. */
+/** How many different photos on the page show a try-on right now (an <img>, a <picture> source or a background). */
 export function shownCount(): number {
   const ids = new Set<string>();
   for (const [el, s] of swapped) {
-    if (el instanceof HTMLImageElement && el.isConnected && el.getAttribute('src') === s.ours) ids.add(s.ours);
+    if (!el.isConnected) continue;
+    const shows =
+      el instanceof HTMLImageElement
+        ? el.getAttribute('src') === s.ours
+        : el instanceof HTMLSourceElement
+          ? el.getAttribute('srcset') === s.ours
+          : el.style.backgroundImage.includes(s.ours);
+    if (shows) ids.add(s.ours);
   }
   return ids.size;
+}
+
+/**
+ * How many of the registered try-ons belong to photos this page has — drawn already or not yet: stores keep
+ * the photos of tiles they draw only when scrolled to in the page's own markup and data.
+ */
+export function onPageCount(): number {
+  const html = document.documentElement.innerHTML;
+  let n = 0;
+  for (const id of replacements.keys()) {
+    const file = id.split('/').pop() ?? '';
+    if (file.length >= 8 && html.includes(file)) n++;
+  }
+  return n;
 }
 
 /** Called after every pass that may have changed what the page shows. Returns an unsubscribe function. */

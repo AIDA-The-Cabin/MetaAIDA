@@ -11,6 +11,7 @@ import {
   setShowing,
   isShowing,
   shownCount,
+  onPageCount,
   onSwapsChanged,
 } from './replace';
 import { collectPageImages, revealLazyPhotos } from './collect';
@@ -70,13 +71,18 @@ export async function showTryons(apiBase: string, on: boolean, announce = false)
   }
   if (!isShowing()) return; // turned off again meanwhile
   startReplacementObserver();
-  if (announce) tryonStatus.value = { loading: false, count: shownCount() };
+  if (announce) tryonStatus.value = { loading: false, count: photosOnYou() };
+}
+
+/** Photos of this page with a try-on: those already showing it, and those the page will draw further down. */
+function photosOnYou(): number {
+  return Math.max(shownCount(), onPageCount());
 }
 
 // The count follows the page while the status is up (tiles the page renders as the customer scrolls).
 onSwapsChanged(() => {
   const st = tryonStatus.value;
-  if (st && !st.loading && st.count !== shownCount()) tryonStatus.value = { ...st, count: shownCount() };
+  if (st && !st.loading && st.count < shownCount()) tryonStatus.value = { ...st, count: shownCount() };
 });
 
 export { setShowing };
