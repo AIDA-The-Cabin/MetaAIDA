@@ -20,8 +20,14 @@ export class CabinApi {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ garmentImageUrl, pageUrl, batchId, sceneOnly: opts.sceneOnly || undefined }),
     });
-    const j = (await r.json()) as TryonResult & { error?: string; detail?: string };
-    if (!r.ok) throw new Error(j.detail || j.error || 'try-on failed');
+    const text = await r.text();
+    let j = {} as TryonResult & { error?: string; detail?: string };
+    try {
+      j = JSON.parse(text);
+    } catch {
+      /* Cloudflare's own error page (e.g. 503 "error code: 1102") */
+    }
+    if (!r.ok) throw new Error(j.detail || j.error || `${r.status} ${text.slice(0, 80)}`);
     return j;
   }
 
@@ -42,6 +48,18 @@ export class CabinApi {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ garmentImageUrls }),
+    });
+    if (!r.ok) return [];
+    const j = (await r.json()) as { results?: Array<{ garmentImageUrl: string; resultUrl: string }> };
+    return j.results ?? [];
+  }
+
+  /** Cache-only: every try-on the customer has from this page's site, at once. */
+  async lookupSite(pageUrl: string): Promise<Array<{ garmentImageUrl: string; resultUrl: string }>> {
+    const r = await fetch(this.url('/v1/lookup/site'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pageUrl }),
     });
     if (!r.ok) return [];
     const j = (await r.json()) as { results?: Array<{ garmentImageUrl: string; resultUrl: string }> };

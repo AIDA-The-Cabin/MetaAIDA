@@ -12,6 +12,7 @@
       .sw.on { background: linear-gradient(180deg,#E7C977,#C9A24B); }
       .kn { position: absolute; top: 3px; left: 3px; width: 21px; height: 21px; border-radius: 50%; background: #fff; transition: left .2s; }
       .sw.on .kn { left: 24px; }
+      .sw:focus-visible { outline: 2px solid #E7C977; outline-offset: 2px; }
       .cap { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: #7E828B; margin: 0 0 10px; }
       .opt { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border: 1px solid #2A2E35; border-radius: 10px; margin-bottom: 8px; cursor: pointer; background: #131519; transition: border-color .15s, background .15s; }
       .opt.sel { border-color: #C9A24B; background: #1B1E24; }
@@ -50,8 +51,8 @@
     </div>
 
     <div class="row">
-      <span class="lab" id="lab">On</span>
-      <div class="sw on" id="sw"><div class="kn"></div></div>
+      <span class="lab">Show my try-ons</span>
+      <div class="sw" id="sw" role="switch" aria-checked="false" aria-label="Show my try-ons" tabindex="0"><div class="kn"></div></div>
     </div>
 
     <p class="cap" style="margin-top: 16px;">Profile</p>
@@ -69,7 +70,7 @@
     </div>
     <p class="hint" id="pageinfo" style="margin-top: 8px;">Puts you into every photo with one person in it. Check first: it shows the count and the cost, without generating anything.</p>
 
-    <p class="hint">Turn off to check whether a page problem is caused by the extension. Reload the page after changing settings.</p>
+    <p class="hint">Off shows the store's own photos. Your try-ons stay saved and come back as soon as you turn it on — on every open tab, no reload.</p>
     <script src="popup.js"></script>
   </body>
 </html>

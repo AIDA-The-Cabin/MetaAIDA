@@ -8,6 +8,7 @@ import {
   tryonRequestSchema,
   cabinAddSchema,
   lookupSchema,
+  lookupSiteSchema,
   convertPlanSchema,
   profileUpdateSchema,
   profileCreateSchema,
@@ -18,7 +19,7 @@ import { getDb } from './db/client';
 import type { Env } from './env';
 import { stubAuth, tenantFromApiKey } from './auth';
 import { getCredits } from './credits';
-import { runTryon, imageUrl, TryonError, getTryonById, lookupResults } from './tryon';
+import { runTryon, imageUrl, TryonError, getTryonById, lookupResults, siteResults } from './tryon';
 import { planConversion } from './convert';
 import { activeProfile, createProfile, listProfiles, nextBodyVersion, profileSummary, setActiveProfile } from './profiles';
 import { avatarKey, buildAvatar, closeupKey } from './avatar';
@@ -264,6 +265,19 @@ app.post('/v1/lookup', async (c) => {
   }
   const results = await lookupResults(db, ctx, body.garmentImageUrls);
   return c.json({ results });
+});
+
+// Cache-only: all of this profile's try-ons from the page's site, at once ("Show my try-ons" — no scrolling).
+app.post('/v1/lookup/site', async (c) => {
+  const ctx = stubAuth();
+  const db = getDb(c.env.DB);
+  let body;
+  try {
+    body = lookupSiteSchema.parse(await c.req.json());
+  } catch (e) {
+    return c.json({ error: 'bad_request', detail: String(e) }, 400);
+  }
+  return c.json({ results: await siteResults(db, ctx, body.pageUrl) });
 });
 
 app.post(ROUTES.cabin, async (c) => {

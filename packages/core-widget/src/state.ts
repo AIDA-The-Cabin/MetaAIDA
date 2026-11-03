@@ -18,3 +18,10 @@ export interface PageProgress {
   stopped?: string;
 }
 export const pageProgress = signal<PageProgress | null>(null);
+
+/** "Show my try-ons" just turned on: loading, then how many photos on this page show the customer (null = hidden). */
+export interface TryonStatus {
+  loading: boolean;
+  count: number;
+}
+export const tryonStatus = signal<TryonStatus | null>(null);

@@ -13,9 +13,8 @@ import { imageReachable, sha256Hex } from './util';
 import { activeProfile } from './profiles';
 import { closeupKey } from './avatar';
 import { sceneKey } from './scene';
-import { META_COST_USD } from './meta';
 import { SAM_COST_USD } from './sam';
-import { cacheKeyFor, VARIANTS } from './tryon';
+import { cacheKeyFor, SCENE_MAX_COST_USD, VARIANTS } from './tryon';
 
 export async function planConversion(
   env: Env,
@@ -36,13 +35,15 @@ export async function planConversion(
       .get();
     if (g && profile.primaryPhotoId) {
       let cached = false;
+      let rejected = false;
       for (const v of VARIANTS) {
         const key = await cacheKeyFor(ctx.userId, profile.bodyVersion, g.id, v);
         const tr = await db.select().from(schema.tryonResults).where(eq(schema.tryonResults.cacheKey, key)).get();
         if (tr?.status === 'done' && tr.resultR2Key) cached = true;
+        if (tr?.status === 'rejected') rejected = true; // no try-on of it passed the quality check: not retried
       }
-      if (cached) {
-        items.push({ url, state: 'cached' });
+      if (cached || rejected) {
+        items.push({ url, state: cached ? 'cached' : 'skip' });
         continue;
       }
     }
@@ -51,12 +52,12 @@ export async function planConversion(
       const people = Number(scene.customMetadata?.people ?? scene.customMetadata?.person ?? 0);
       const ready = scene.customMetadata?.person !== '0' && people === 1;
       items.push({ url, state: ready ? 'ready' : 'skip' });
-      if (ready) usd += META_COST_USD;
+      if (ready) usd += SCENE_MAX_COST_USD;
       continue;
     }
     const reachable = await imageReachable(url);
     items.push({ url, state: reachable ? 'new' : 'unreachable' });
-    if (reachable) usd += 2 * SAM_COST_USD + META_COST_USD; // head + face analysis, then (if one person) the image
+    if (reachable) usd += 2 * SAM_COST_USD + SCENE_MAX_COST_USD; // head + face analysis, then (if one person) the image
   }
 
   // The customer's face close-up is built once per photo, on the first try-on in a store's scene.

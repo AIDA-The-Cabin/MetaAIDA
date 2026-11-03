@@ -56,20 +56,30 @@ function loadProfiles() {
 }
 loadProfiles();
 
-/* ---- on / off ---- */
+/* ---- show my try-ons: off = the store's photos, on = the customer's try-ons (open tabs switch at once) ---- */
 const sw = $('#sw');
-const lab = $('#lab');
 function renderSwitch(on) {
   sw.classList.toggle('on', on);
-  lab.textContent = on ? 'On' : 'Off';
+  sw.setAttribute('aria-checked', String(on));
 }
-chrome.storage.local.get('cabinEnabled', (r) => renderSwitch(r.cabinEnabled !== false));
-sw.addEventListener('click', () => {
-  chrome.storage.local.get('cabinEnabled', (r) => {
-    const next = !(r.cabinEnabled !== false);
-    chrome.storage.local.set({ cabinEnabled: next });
+chrome.storage.local.get('cabinShow', (r) => renderSwitch(r.cabinShow === true));
+function toggleShow() {
+  chrome.storage.local.get('cabinShow', (r) => {
+    const next = r.cabinShow !== true;
+    chrome.storage.local.set({ cabinShow: next });
     renderSwitch(next);
   });
+}
+sw.addEventListener('click', toggleShow);
+sw.addEventListener('keydown', (e) => {
+  if (e.key === ' ' || e.key === 'Enter') {
+    e.preventDefault();
+    toggleShow();
+  }
+});
+// The page turns it on too (Try it on, Convert all photos).
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes.cabinShow) renderSwitch(changes.cabinShow.newValue === true);
 });
 
 /* ---- scope: Individual (default) | Perpetual ---- */
@@ -117,6 +127,8 @@ $('#plan').addEventListener('click', async () => {
   info.textContent = parts.join(' · ') + '. Photos without exactly one person are skipped before any image is made.';
 });
 $('#convert').addEventListener('click', async () => {
+  chrome.storage.local.set({ cabinShow: true }); // converting is for seeing them
+  renderSwitch(true);
   const r = await toPage('cabin-convert-page');
   $('#pageinfo').textContent = !r ? NOT_HERE : r.error ? r.error : 'Converting — follow the progress on the page.';
 });

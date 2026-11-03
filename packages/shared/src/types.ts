@@ -9,8 +9,8 @@ export interface TryonResult {
   cached: boolean;
   latencyMs?: number;
   error?: string;
-  /** Why a whole-page conversion left this photo alone: no person in it, or more than one. */
-  skipped?: 'no_person' | 'group';
+  /** Why a whole-page conversion left this photo alone: no person in it, more than one, or no try-on of it passed the quality check. */
+  skipped?: 'no_person' | 'group' | 'rejected';
 }
 
 /** One photo in a whole-page conversion dry run. */

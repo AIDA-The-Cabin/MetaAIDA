@@ -1,16 +1,45 @@
 import { useEffect } from 'preact/hooks';
-import { pageProgress } from '../state';
+import { pageProgress, tryonStatus } from '../state';
 import { t } from '../i18n';
 
-/** Whole-page conversion progress, bottom centre. Hides itself a few seconds after the run ends. */
+/**
+ * Bottom centre: whole-page conversion progress, or — right after "Show my try-ons" is turned on — how many
+ * photos on this page show the customer. Hides itself a few seconds after either one is settled.
+ */
 export function PagePill() {
   const p = pageProgress.value;
+  const st = tryonStatus.value;
   const s = t();
   useEffect(() => {
     if (!p || p.running) return;
     const id = window.setTimeout(() => (pageProgress.value = null), 8000);
     return () => window.clearTimeout(id);
   }, [p?.running]);
+  useEffect(() => {
+    if (!st || st.loading) return;
+    const id = window.setTimeout(() => (tryonStatus.value = null), 6000);
+    return () => window.clearTimeout(id);
+  }, [st?.loading]);
+
+  if (!p && st) {
+    return (
+      <div class="cabin-pill" role="status">
+        {st.loading && <span class="cabin-spinner-sm" />}
+        <span class="cabin-pill-text">
+          {st.loading
+            ? s.showingTryons
+            : st.count
+              ? `✓ ${st.count} ${st.count === 1 ? s.photoOnYou : s.photosOnYou}`
+              : s.noTryonsHere}
+        </span>
+        {!st.loading && (
+          <button class="cabin-pill-x" onClick={() => (tryonStatus.value = null)} aria-label={s.close}>
+            ×
+          </button>
+        )}
+      </div>
+    );
+  }
   if (!p) return null;
 
   const handled = p.done + p.skipped + p.failed;

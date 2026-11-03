@@ -50,3 +50,9 @@ export const consentSchema = z.object({
   granted: z.boolean(),
 });
 export type ConsentRequest = z.infer<typeof consentSchema>;
+
+// Cache-only: every try-on the active profile has from one site's pages ("Show my try-ons" in the extension).
+export const lookupSiteSchema = z.object({
+  pageUrl: z.string().url(),
+});
+export type LookupSiteRequest = z.infer<typeof lookupSiteSchema>;

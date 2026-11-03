@@ -1,18 +1,27 @@
 import { CabinApi } from './api';
 import { mountShadow } from './mount';
 import { createCabinButton, setButtonLoading, setButtonDone, setButtonError } from './button';
-import { cabinItems, panelOpen, profiles, activeProfileId, pageProgress, type PageProgress } from './state';
+import { cabinItems, panelOpen, profiles, activeProfileId, pageProgress, tryonStatus, type PageProgress } from './state';
 import { lang, t } from './i18n';
 import { detectGallery } from './detect';
-import { registerReplacement, startReplacementObserver, photoId } from './replace';
+import {
+  registerReplacement,
+  startReplacementObserver,
+  photoId,
+  setShowing,
+  isShowing,
+  shownCount,
+  onSwapsChanged,
+} from './replace';
 import { collectPageImages, revealLazyPhotos } from './collect';
 import type { CabinItem, ConvertPlan } from '@aida/shared';
 
 /**
- * Whole-page conversion: photos generating at once. Each one is its own request (one Muse Image edit,
- * ~20–25 s), so 20 in flight ≈ 50 a minute — well under Muse Image's 150 a minute.
+ * Whole-page conversion: photos generating at once. Each one is its own request (up to three Muse Image
+ * generations, each checked by Muse Spark: ~45 s to ~3 min). More in flight ran the API's CPU budget out
+ * (Cloudflare 1102) and failed every photo still queued.
  */
-const PAGE_CONCURRENCY = 20;
+const PAGE_CONCURRENCY = 5;
 /** A photo refused for rate limiting goes back in the queue this many times. */
 const MAX_REQUEUES = 2;
 
@@ -41,35 +50,36 @@ export async function planPage(apiBase: string): Promise<ConvertPlan> {
 }
 
 /**
- * Any page, no UI: show the try-ons this customer already has for the page's photos (cache-only, free), and
- * keep doing it as the page lazy-loads more photos. Returns a stop function.
+ * "Show my try-ons" (the extension's switch). On: every try-on this customer has from this site replaces the
+ * store photo it was made from, wherever the page shows it — photos the page renders later included, since all
+ * of them are loaded at once (nothing is scrolled, the page keeps its place). Off: the store's photos come back
+ * at once. `announce` shows on the page how many photos now show the customer.
  */
-export function watchPageImages(apiBase: string): () => void {
+export async function showTryons(apiBase: string, on: boolean, announce = false): Promise<void> {
+  setShowing(on);
+  if (!on) {
+    tryonStatus.value = null;
+    return;
+  }
+  if (announce) tryonStatus.value = { loading: true, count: 0 };
   const api = new CabinApi(apiBase);
-  const seen = new Set<string>();
-  let timer = 0;
-  const run = async () => {
-    const fresh = collectPageImages().filter((p) => !seen.has(p.id));
-    if (!fresh.length) return;
-    fresh.forEach((p) => seen.add(p.id));
-    const hits = await lookupAll(api, fresh.map((p) => p.url)).catch(() => []);
-    for (const h of hits) {
-      const u = api.imageUrl(h.resultUrl);
-      if (u) registerReplacement(h.garmentImageUrl, u);
-    }
-    if (hits.length) startReplacementObserver();
-  };
-  const obs = new MutationObserver(() => {
-    window.clearTimeout(timer);
-    timer = window.setTimeout(run, 800);
-  });
-  obs.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['src', 'srcset', 'class'] });
-  void run();
-  return () => {
-    obs.disconnect();
-    window.clearTimeout(timer);
-  };
+  const hits = await api.lookupSite(location.href).catch(() => []);
+  for (const h of hits) {
+    const u = api.imageUrl(h.resultUrl);
+    if (u) registerReplacement(h.garmentImageUrl, u);
+  }
+  if (!isShowing()) return; // turned off again meanwhile
+  startReplacementObserver();
+  if (announce) tryonStatus.value = { loading: false, count: shownCount() };
 }
+
+// The count follows the page while the status is up (tiles the page renders as the customer scrolls).
+onSwapsChanged(() => {
+  const st = tryonStatus.value;
+  if (st && !st.loading && st.count !== shownCount()) tryonStatus.value = { ...st, count: shownCount() };
+});
+
+export { setShowing };
 
 export interface CabinMountConfig {
   apiBase: string;
@@ -79,6 +89,8 @@ export interface CabinMountConfig {
   lang?: 'en' | 'ro';
   /** 'image' = replace just the main product photo (default). 'page' = replace every photo on the product page. */
   scope?: 'image' | 'page';
+  /** The customer asked to see a try-on on the page (Try it on, whole-page conversion) — e.g. switch "Show my try-ons" on. */
+  onShowTryons?: () => void;
 }
 
 export interface CabinProductRef {
@@ -123,6 +135,12 @@ export function mountCabin(cfg: CabinMountConfig): CabinController {
     startReplacementObserver();
   }
 
+  // The customer asked to see themselves on the page: try-ons become visible (in the extension the switch goes on).
+  function showMine() {
+    setShowing(true);
+    cfg.onShowTryons?.();
+  }
+
   // Mark a Cabin item done + replace its product photo on the page.
   function applyResult(itemId: string, resultUrl: string | undefined, originalUrl: string, btn?: HTMLButtonElement | null) {
     cabinItems.value = cabinItems.value.map((i) => (i.id === itemId ? { ...i, status: 'done' as const, resultUrl } : i));
@@ -145,6 +163,7 @@ export function mountCabin(cfg: CabinMountConfig): CabinController {
 
     // Individual: add to the Cabin + replace the main product photo on the page.
     tryOn(product, btn) {
+      showMine();
       if (btn) setButtonLoading(btn);
       const tmpId = 'tmp_' + Math.random().toString(36).slice(2);
       const placeholder: CabinItem = {
@@ -175,6 +194,7 @@ export function mountCabin(cfg: CabinMountConfig): CabinController {
     tryOnPage(product, btn) {
       const gallery = detectGallery(product.garmentImageUrl);
       if (gallery.length <= 1) return ctrl.tryOn(product, btn); // single/none detected → normal flow
+      showMine();
       if (btn) setButtonLoading(btn);
       startReplacementObserver(); // observe now so each result applies the moment it lands
       const batchId = 'batch_' + Math.random().toString(36).slice(2);
@@ -269,6 +289,7 @@ export function mountCabin(cfg: CabinMountConfig): CabinController {
 
     async convertPage() {
       if (pageProgress.value?.running) return;
+      showMine();
       const p: PageProgress = { total: 0, done: 0, skipped: 0, failed: 0, running: true };
       const show = () => (pageProgress.value = { ...p });
       show();
@@ -307,8 +328,8 @@ export function mountCabin(cfg: CabinMountConfig): CabinController {
             } catch (e) {
               const msg = (e as Error).message;
               const n = requeues.get(photo.id) ?? 0;
-              if (/\b429\b|rate.?limit|too many/i.test(msg) && n < MAX_REQUEUES) {
-                // Muse Image is busy: this photo goes to the back of the queue, this worker cools down.
+              if (/\b(429|503)\b|1102|rate.?limit|too many/i.test(msg) && n < MAX_REQUEUES) {
+                // Muse Image or the API is busy: this photo goes to the back of the queue, this worker cools down.
                 requeues.set(photo.id, n + 1);
                 todo.push(photo);
                 await sleep(15000);

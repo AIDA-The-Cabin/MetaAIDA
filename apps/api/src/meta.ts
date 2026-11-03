@@ -12,16 +12,27 @@
 // One synchronous call returns the finished image (WebP). $0.01 per generated image; failed or
 // safety-filtered images are not billed. Docs: https://dev.meta.ai/docs/image-generation
 // ============================================================================
-import { PhotonImage, Rgba, crop, padding_bottom, padding_left, padding_right, padding_top } from '@cf-wasm/photon';
+import {
+  PhotonImage,
+  Rgba,
+  SamplingFilter,
+  crop,
+  padding_bottom,
+  padding_left,
+  padding_right,
+  padding_top,
+  resize,
+} from '@cf-wasm/photon';
 import type { Env } from './env';
-import { abToBase64, imageSize, sleep } from './util';
+import { abToBase64, base64ToBytes as b64ToBytes, imageSize, sleep } from './util';
+import type { Build } from './quality';
 
 const META_BASE = 'https://api.meta.ai/v1';
 export const META_IMAGE_MODEL = 'muse-image-1.0';
 export const META_COST_USD = 0.01;
 /** Cache variants — part of the cache key and the R2 key suffix. */
 export const META_VARIANT = 'meta'; // on the customer's own photo
-export const META_SCENE_VARIANT = 'meta-scene'; // in the store's scene
+export const META_SCENE_VARIANT = 'meta-scene-qa'; // in the store's scene, kept only after the quality check (quality.ts)
 
 const PROMPT_OWN_PHOTO =
   'Photorealistic virtual try-on. Image 1 is a person; image 2 shows a clothing item. Render the person from image 1 ' +
@@ -29,28 +40,28 @@ const PROMPT_OWN_PHOTO =
   'background exactly as in image 1; change only the outfit to the garment from image 2, matching its cut, colour, ' +
   'pattern and details as closely as possible. Same framing and lighting as image 1. No text, no watermark.';
 
-// Image A is only WHO the person is: with close-up store photos (a big blanked box, a cropped body) Muse Image
-// otherwise fell back to image A's own composition — the customer's room, full body, zoomed out.
-const SCENE_A =
-  "Image A - the customer. Use it ONLY to know who the person is: face, facial features, hair (colour, length, " +
-  'texture), skin tone, and body build and proportions. Ignore everything else in image A: its background, wall, ' +
-  'floor, light, clothes, shoes, pose and framing.';
-const SCENE_A2 = "Image A2 - a close-up of the same customer's face, for an exact likeness.";
-const SCENE_B =
-  "Image B - the store's product photo. The original model's head was blanked out on purpose (the flat box). " +
-  'Everything else in image B is the target: the garment, the shoes and accessories, the pose, the camera framing ' +
-  'and crop, the background and the lighting.';
-const sceneTask = (withCloseup: boolean) =>
-  'Recreate image B as a finished, photorealistic photo with exactly the same composition as image B: the same ' +
-  'camera framing and crop - if image B is a close-up that cuts the body or the head at the edge of the frame, the ' +
-  'result is the same close-up, cut at the same place; do not zoom out and do not show more of the body than image ' +
-  'B shows - the same pose, the same background and set, the same lighting, and the same garment exactly as in ' +
-  'image B (cut, colour, length, neckline and every detail) with the same shoes and accessories. The person wearing ' +
-  `it is the customer from image A: their head, face and hair exactly as in image${withCloseup ? 's A and A2' : ' A'} ` +
-  '(placed where the box is), their skin tone on the visible skin, and their own body build and proportions (the ' +
-  "garment fits their real body). The background is always image B's, never image A's. Natural neck and shoulders, " +
-  'seamless result, no grey box. Keep any text, logo or graphic that is part of image B exactly as it is (same ' +
-  'words, font, size, colour, position and layering) and add no new text or watermark.';
+// The store-scene rules go in `instructions` (the image model honours them, up to 12,000 characters). Image A
+// alone left the store model's slim outline with the customer's face on it, and with the head masked the figure
+// sometimes came out mirrored or with the feet turned back — so build, anatomy and facing are spelled out. Lists
+// of body parts are left out on purpose: next to revealing garments they trip Meta's content filter.
+const sceneRules = (build: Build | null) =>
+  [
+    'You are a virtual fitting room. You redraw a store product photo so that the customer is the person wearing the outfit. Every rule below is mandatory.',
+    "IDENTITY - the face, facial features, hair (colour, length, texture) and skin tone come only from the customer photos A and A2. Nothing of the store model's identity remains.",
+    `BODY SIZE - ${build ? `the customer is ${build}. ` : ''}Draw the customer at their real size and build exactly as in image A, never slimmer. The store model in image B is a different, usually much slimmer person: do not keep the store model's outline. Shoulders, arms, torso, waist, hips and legs all take the customer's size from image A. The clothes keep their cut and are worn by that real body, fitting and folding the way they would on the customer.`,
+    'ANATOMY - one physically possible person: head, shoulders, torso, hips, knees and feet all point in consistent directions, never a head or torso turned one way while the legs and feet point the other way. Two arms, two hands with five fingers each, two legs, two feet, natural joints.',
+    "POSE - the same pose as image B: the same facing direction (if the person in image B faces the left side of the frame, the customer faces the left side too), the same arm, hand, leg and foot positions. Never mirror or flip the figure or the scene. The head sits where the blank box is and turns the way image B's neck and shoulders indicate.",
+    "COMPOSITION - exactly image B's camera framing and crop (a close-up stays a close-up cut at the same place; never zoom out), image B's background, set, light and colour grading. Nothing of image A's background, floor, clothes or pose is used.",
+    'GARMENT - the same garments, shoes and accessories as image B: cut, colour, pattern, fabric, length and every detail.',
+    'TEXT - any text, logo or graphic printed on image B stays exactly as it is; add no new text, watermark or border, and no grey box remains.',
+  ].join('\n');
+const SCENE_A = 'Image A - the customer, full body: who they are and their real size and build.';
+const SCENE_A2 = "Image A2 - close-up of the customer's face.";
+const SCENE_B = "Image B - the store's product photo; the store model's head is blanked out on purpose (flat box).";
+/** What failed in an earlier attempt comes back as fixed sentences (quality.ts retryNotes). */
+const sceneTask = (build: Build | null, notes: string[]) =>
+  `Recreate image B with the customer from image A wearing it, at the customer's real ${build ? `${build} ` : ''}size, following every rule.` +
+  (notes.length ? ` A previous attempt was rejected. Fix this: ${notes.join(' ')}` : '');
 
 // Muse Image searches the web and runs code on its own by default; a try-on needs neither.
 const TOOLS_OFF = { enable_image_search: false, enable_web_search: false, enable_shell: false };
@@ -62,13 +73,6 @@ export interface MetaImage {
   bytes: Uint8Array;
   contentType: string;
   latencyMs: number;
-}
-
-function b64ToBytes(b64: string): Uint8Array {
-  const bin = atob(b64);
-  const out = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-  return out;
 }
 
 /** Width and height of the image in a data URI, read from its header (no decoding). */
@@ -135,47 +139,67 @@ function stripColour(img: PhotonImage, strips: Array<[number, number, number, nu
 /** photon takes an Rgba by value (the call consumes it), so every padding call gets its own. */
 const rgba = ([r, g, b]: [number, number, number]) => new Rgba(r, g, b, 255);
 
-/** The photo as the tool must receive it: an accepted size, padded when its shape differs by more than 2%. */
-function fitToToolSize(dataUri: string): { dataUri: string; size?: string; box?: PadBox } {
-  const d = dims(dataUri);
-  if (!d) return { dataUri };
+/** The store photo as the tool receives it: its accepted size, and where the photo sits when it was padded. */
+export interface PreparedScene {
+  dataUri: string;
+  size?: string;
+  box?: PadBox;
+}
+
+/**
+ * The masked store photo as the tool must receive it, decoded once: stretched sideways by `widen` around its
+ * centre and cropped back to its own size (the figure Muse Image follows is then about the customer's width —
+ * told only in words, it kept the store model's outline on form-fitting clothes), then padded to the nearest
+ * accepted size when its shape differs by more than 2%.
+ */
+export function prepareScene(maskedDataUri: string, widen = 1): PreparedScene {
+  const d = dims(maskedDataUri);
+  if (!d) return { dataUri: maskedDataUri };
   const r = d.w / d.h;
   const t = TOOL_SIZES.reduce((a, b) => (Math.abs(Math.log(b.ratio / r)) < Math.abs(Math.log(a.ratio / r)) ? b : a));
-  if (Math.abs(Math.log(r / t.ratio)) < 0.02) return { dataUri, size: t.size };
+  const pad = Math.abs(Math.log(r / t.ratio)) >= 0.02;
+  if (!pad && widen <= 1) return { dataUri: maskedDataUri, size: t.size };
+  const owned: PhotonImage[] = [];
   try {
-    const img = PhotonImage.new_from_byteslice(b64ToBytes(dataUri.slice(dataUri.indexOf(',') + 1)));
-    try {
-      const w = img.get_width();
-      const h = img.get_height();
+    let img = PhotonImage.new_from_byteslice(b64ToBytes(maskedDataUri.slice(maskedDataUri.indexOf(',') + 1)));
+    owned.push(img);
+    const w = img.get_width();
+    const h = img.get_height();
+    if (widen > 1) {
+      const W = Math.round(w * widen);
+      const wide = resize(img, W, h, SamplingFilter.Triangle);
+      owned.push(wide);
+      const left = Math.floor((W - w) / 2);
+      img = crop(wide, left, 0, left + w, h);
+      owned.push(img);
+    }
+    let box: PadBox | undefined;
+    if (pad) {
       let a: PhotonImage;
-      let b: PhotonImage;
-      let box: PadBox;
       if (r < t.ratio) {
         const W = Math.round(h * t.ratio);
         const left = Math.floor((W - w) / 2);
         const colour = stripColour(img, [[0, 0, 2, h], [w - 2, 0, w, h]]);
         a = padding_left(img, left, rgba(colour));
-        b = padding_right(a, W - w - left, rgba(colour));
+        owned.push(a);
+        img = padding_right(a, W - w - left, rgba(colour));
         box = { l: left, t: 0, w, h, W, H: h };
       } else {
         const H = Math.round(w / t.ratio);
         const top = Math.floor((H - h) / 2);
         const colour = stripColour(img, [[0, 0, w, 2], [0, h - 2, w, h]]);
         a = padding_top(img, top, rgba(colour));
-        b = padding_bottom(a, H - h - top, rgba(colour));
+        owned.push(a);
+        img = padding_bottom(a, H - h - top, rgba(colour));
         box = { l: 0, t: top, w, h, W: w, H };
       }
-      try {
-        return { dataUri: `data:image/jpeg;base64,${abToBase64(b.get_bytes_jpeg(92).slice().buffer)}`, size: t.size, box };
-      } finally {
-        a.free();
-        b.free();
-      }
-    } finally {
-      img.free();
+      owned.push(img);
     }
+    return { dataUri: `data:image/jpeg;base64,${abToBase64(img.get_bytes_jpeg(92))}`, size: t.size, box };
   } catch {
-    return { dataUri, size: t.size }; // unreadable here → sent as is, the page crops it
+    return { dataUri: maskedDataUri, size: t.size }; // unreadable here → sent as is, the page crops it
+  } finally {
+    owned.forEach((o) => o.free());
   }
 }
 
@@ -259,15 +283,18 @@ export async function metaTryon(env: Env, bodyDataUri: string, garmentDataUri: s
   return callMeta(env, '/images/edits', body, (j) => ({ b64: j.data?.[0]?.b64_json, format: j.output_format }));
 }
 
-/** Try-on in the store's scene: the customer takes the place of the store's model in the product photo. */
+/**
+ * Try-on in the store's scene: the customer takes the place of the store's model in the product photo
+ * (`scene` from prepareScene — prepared once, reused by every attempt with the same stretch).
+ */
 export async function metaSceneTryon(
   env: Env,
   bodyDataUri: string,
   faceDataUri: string | null,
-  maskedSceneDataUri: string,
+  scene: PreparedScene,
   endUser: string,
+  opts: { build?: Build | null; notes?: string[] } = {},
 ): Promise<MetaImage> {
-  const scene = fitToToolSize(maskedSceneDataUri);
   const content: Array<Record<string, string>> = [
     { type: 'input_text', text: SCENE_A },
     { type: 'input_image', image_url: bodyDataUri },
@@ -278,12 +305,13 @@ export async function metaSceneTryon(
   content.push(
     { type: 'input_text', text: SCENE_B },
     { type: 'input_image', image_url: scene.dataUri },
-    { type: 'input_text', text: sceneTask(!!faceDataUri) },
+    { type: 'input_text', text: sceneTask(opts.build ?? null, opts.notes ?? []) },
   );
   const tool: Record<string, unknown> = { type: 'image_generation', output_format: 'webp', ...TOOLS_OFF };
   if (scene.size) tool.size = scene.size;
   const body = {
     model: META_IMAGE_MODEL,
+    instructions: sceneRules(opts.build ?? null),
     input: [{ role: 'user', content }],
     tools: [tool],
     store: false, // nothing to continue — keep the customer's photos off Meta's response store

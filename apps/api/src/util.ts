@@ -1,3 +1,5 @@
+import { Buffer } from 'node:buffer';
+
 const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
 
@@ -10,17 +12,19 @@ export async function sha256Hex(input: string): Promise<string> {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-export function abToBase64(buf: ArrayBuffer): string {
-  const bytes = new Uint8Array(buf);
-  let bin = '';
-  const chunk = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunk) {
-    bin += String.fromCharCode(...bytes.subarray(i, i + chunk));
-  }
-  return btoa(bin);
+// Native base64 (nodejs_compat): the JS loops it replaced cost most of a try-on's CPU time, and the free plan's
+// CPU budget ran out mid-conversion (1102 exceededCpu).
+export function abToBase64(buf: ArrayBuffer | Uint8Array): string {
+  const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+  return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString('base64');
 }
 
-export function dataUri(buf: ArrayBuffer, mime = 'image/jpeg'): string {
+export function base64ToBytes(b64: string): Uint8Array {
+  const b = Buffer.from(b64, 'base64');
+  return new Uint8Array(b.buffer, b.byteOffset, b.byteLength).slice(); // its own buffer (small Buffers share a pool)
+}
+
+export function dataUri(buf: ArrayBuffer | Uint8Array, mime = 'image/jpeg'): string {
   return `data:${mime};base64,${abToBase64(buf)}`;
 }
 

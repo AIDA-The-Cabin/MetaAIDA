@@ -27,6 +27,10 @@ export const strings = {
     failed: 'failed',
     outOfCredits: 'Out of credits',
     close: 'Close',
+    showingTryons: 'Showing your try-ons…',
+    photoOnYou: 'photo on you',
+    photosOnYou: 'photos on you',
+    noTryonsHere: 'No try-ons for this page yet',
   },
   ro: {
     brand: 'Cabina',
@@ -50,6 +54,10 @@ export const strings = {
     failed: 'eșuate',
     outOfCredits: 'Credite epuizate',
     close: 'Închide',
+    showingTryons: 'Îți arăt probele…',
+    photoOnYou: 'poză cu tine',
+    photosOnYou: 'poze cu tine',
+    noTryonsHere: 'Încă nicio probă pe pagina asta',
   },
 } as const;
 

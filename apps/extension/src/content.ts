@@ -1,4 +1,4 @@
-import { mountCabin, planPage, watchPageImages, type CabinController } from '@aida/core-widget';
+import { mountCabin, planPage, setShowing, showTryons, type CabinController } from '@aida/core-widget';
 import { detectProduct } from './adapters';
 
 declare const chrome: any;
@@ -8,12 +8,21 @@ const API_BASE = 'https://metaaida.pages.dev';
 let cabin: CabinController | null = null;
 let injected = false;
 let scope: 'image' | 'page' = 'image';
-let enabled = true;
-let stopWatching: (() => void) | null = null;
+
+/** The customer asked to see a try-on (Try it on, Convert all photos): the popup's "Show my try-ons" goes on. */
+function turnShowOn() {
+  try {
+    void chrome.storage.local.set({ cabinShow: true });
+  } catch {
+    /* no chrome outside the extension */
+  }
+}
 
 /** The widget (Cabin tab + panel), mounted on first need: a product page, or a whole-page conversion. */
 function ensureCabin(): CabinController {
-  if (!cabin) cabin = mountCabin({ apiBase: API_BASE, buttonMode: 'branded', fullPageEnabled: false, scope });
+  if (!cabin) {
+    cabin = mountCabin({ apiBase: API_BASE, buttonMode: 'branded', fullPageEnabled: false, scope, onShowTryons: turnShowOn });
+  }
   return cabin;
 }
 
@@ -21,8 +30,6 @@ function removeWidget() {
   document.querySelectorAll('[data-cabin="tryon-button"]').forEach((e) => e.remove());
   document.querySelectorAll('[data-cabin-overlay]').forEach((e) => e.remove());
   document.getElementById('cabin-root')?.remove();
-  stopWatching?.();
-  stopWatching = null;
   injected = false;
   cabin = null;
 }
@@ -51,37 +58,32 @@ function startWatching() {
   setTimeout(() => obs.disconnect(), 15000);
 }
 
-async function getSettings(): Promise<{ enabled: boolean; scope: 'image' | 'page' }> {
+async function getSettings(): Promise<{ show: boolean; scope: 'image' | 'page' }> {
   try {
-    const r = await chrome.storage.local.get(['cabinEnabled', 'cabinScope']);
+    const r = await chrome.storage.local.get(['cabinShow', 'cabinScope']);
     return {
-      enabled: r.cabinEnabled !== false,
+      show: r.cabinShow === true, // "Show my try-ons" starts off: the store's own photos
       scope: r.cabinScope === 'page' ? 'page' : 'image',
     };
   } catch {
-    return { enabled: true, scope: 'image' };
+    return { show: false, scope: 'image' };
   }
 }
 
 async function boot() {
   const s = await getSettings();
   scope = s.scope;
-  enabled = s.enabled;
-  if (!s.enabled) return removeWidget();
+  // Before anything registers a try-on, so a page opened with the switch off never flashes one.
+  setShowing(s.show);
   // The Cabin tab is on every page of a supported store, not only on product pages.
   ensureCabin();
   startWatching();
-  // Every page: show the try-ons this customer already has for its photos (cache-only, free).
-  stopWatching ??= watchPageImages(API_BASE);
+  if (s.show) void showTryons(API_BASE, true);
 }
 
 // The popup's "This page" buttons: a dry run (what converting would cost) and the whole-page conversion.
 try {
   chrome.runtime?.onMessage?.addListener((msg: any, _sender: unknown, reply: (r: unknown) => void) => {
-    if (!enabled) {
-      reply({ error: 'The Cabin is turned off.' });
-      return false;
-    }
     if (msg?.type === 'cabin-convert-page') {
       void ensureCabin().convertPage();
       reply({ started: true });
@@ -109,15 +111,16 @@ try {
   /* no chrome outside the extension */
 }
 
-// React live to popup changes (on/off, scope) — re-mount with the new settings.
+// React live to popup changes: "Show my try-ons" swaps the photos in place (no reload), scope re-mounts.
 try {
   chrome.storage?.onChanged?.addListener((changes: any, area: string) => {
     if (area !== 'local') return;
     // Another person → every try-on on the page changes → reload the page.
-    if (changes.cabinProfileSwitch && (injected || cabin || stopWatching)) return location.reload();
-    if (changes.cabinEnabled || changes.cabinScope) {
+    if (changes.cabinProfileSwitch && cabin) return location.reload();
+    if (changes.cabinShow) void showTryons(API_BASE, changes.cabinShow.newValue === true, true);
+    if (changes.cabinScope) {
       removeWidget();
-      boot();
+      void boot();
     }
   });
 } catch {
