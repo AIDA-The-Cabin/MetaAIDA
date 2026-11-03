@@ -74,9 +74,14 @@ export type Direction = (typeof DIRECTION)[number];
  * this consistently, and it says which way the try-on has to move away from the model's outline — for a
  * customer of any build, without assuming one.
  */
-export async function customerVsModel(env: Env, storeDataUri: string, bodyDataUri: string, people = 1): Promise<Direction> {
+export async function customerVsModel(
+  env: Env,
+  storeDataUri: string,
+  bodyDataUri: string,
+  people = 1,
+): Promise<{ dir: Direction; realPeople: number }> {
   const model = people > 1 ? 'models' : 'model';
-  const q = await spark<{ customer_vs_model: Direction }>(
+  const q = await spark<{ customer_vs_model: Direction; real_people: number }>(
     env,
     [
       { type: 'input_text', text: 'IMAGE 1 - the customer.' },
@@ -85,14 +90,19 @@ export async function customerVsModel(env: Env, storeDataUri: string, bodyDataUr
       { type: 'input_image', image_url: storeDataUri },
       {
         type: 'input_text',
-        text: `Compare the body build of the customer in image 1 with the store's ${model} in image 2: overall body size relative to height (shoulders, arms, torso, waist, hips, legs), scaled by head size. Loose clothes are not body: where they hide the outline, judge by the width of the shoulders, neck, wrists and hands and of the whole figure compared with the head. Answer: the customer is ${DIRECTION.join(', ')} than the ${model}.`,
+        text: `Compare the body build of the customer in image 1 with the store's ${model} in image 2: overall body size relative to height (shoulders, arms, torso, waist, hips, legs), scaled by head size. Loose clothes are not body: where they hide the outline, judge by the width of the shoulders, neck, wrists and hands and of the whole figure compared with the head. Answer: the customer is ${DIRECTION.join(', ')} than the ${model}. Also real_people: how many real, photographed people image 2 shows (drawings, illustrations, mannequins and printed figures do not count; 0 if none).`,
       },
     ],
     'direction',
-    { type: 'object', additionalProperties: false, required: ['customer_vs_model'], properties: { customer_vs_model: { type: 'string', enum: DIRECTION } } },
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['customer_vs_model', 'real_people'],
+      properties: { customer_vs_model: { type: 'string', enum: DIRECTION }, real_people: { type: 'integer' } },
+    },
     'medium',
   );
-  return q.customer_vs_model;
+  return { dir: q.customer_vs_model, realPeople: Math.max(0, q.real_people) };
 }
 
 /** What two of the three candidates are told when the store's model is built differently from the customer. */

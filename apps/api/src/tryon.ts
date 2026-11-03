@@ -155,20 +155,22 @@ async function prepareInputs(
  */
 async function checkedSceneTryon(
   env: Env,
-  inputs: { bodyB64: string; garmentB64: string; face: string | null; masked: string; endUser: string; people: number },
+  inputs: {
+    bodyB64: string;
+    garmentB64: string;
+    face: string | null;
+    masked: string;
+    endUser: string;
+    people: number;
+    dir: Direction;
+  },
 ): Promise<{ gen: Awaited<ReturnType<typeof metaSceneTryon>> | null; reason: string; costUsd: number }> {
   let costUsd = 0;
   let notes: string[] = [];
   const scene = prepareScene(inputs.masked);
-  // Which way the customer differs from the store's model: one candidate is drawn without a hint, the others are
-  // told to move away from the model's outline that way (Muse Image alone mostly kept it).
-  let dir: Direction = 'about the same';
-  try {
-    dir = await customerVsModel(env, inputs.garmentB64, inputs.bodyB64, inputs.people);
-    costUsd += DIRECTION_COST_USD;
-  } catch {
-    /* no hint — the comparison below still rejects the model's outline only by the customer's own photo */
-  }
+  // One candidate is drawn without a hint, the others are told to move away from the store model's outline the
+  // way the customer differs from it (Muse Image alone mostly kept the outline).
+  const dir = inputs.dir;
   const away = directionNote(dir);
   // Candidates stay padded until one is kept (cropping all three ran out of the Worker's CPU budget); the store
   // photo is padded the same way for the comparison, so framing is judged like for like.
@@ -268,7 +270,22 @@ export async function runTryon(
   const { bodyB64, garmentB64 } = await prepareInputs(env, db, profile, garment);
 
   // The store's scene needs a person in the product photo; flat lays are dressed on the customer's own photo.
-  const scene = await storeScene(env, db, ctx, garment, garmentB64);
+  let scene = await storeScene(env, db, ctx, garment, garmentB64);
+  // The customer next to the store's model (which way the try-on must move away from the model's outline), and
+  // how many real people the photo shows: SAM also finds heads in drawings (a socks illustration came back
+  // with five customers in it).
+  let dir: Direction = 'about the same';
+  let seenCost = 0;
+  if (scene.masked) {
+    try {
+      const seen = await customerVsModel(env, garmentB64, bodyB64, scene.people);
+      seenCost = DIRECTION_COST_USD;
+      dir = seen.dir;
+      scene = seen.realPeople === 0 ? { masked: null, people: 0 } : { ...scene, people: seen.realPeople };
+    } catch {
+      /* no hint — the comparison of the candidates still judges them by the customer's own photo */
+    }
+  }
   // Whole-page conversion: only photos with people in them, nothing is charged for the rest. Photos with several
   // people only with `allPeople` (every one of them becomes the customer).
   if (sceneOnly && (!scene.masked || (scene.people !== 1 && !allPeople))) return skipped(scene.masked ? 'group' : 'no_person');
@@ -291,8 +308,8 @@ export async function runTryon(
   let costUsd = META_COST_USD;
   if (scene.masked) {
     const people = Math.max(1, scene.people);
-    const out = await checkedSceneTryon(env, { bodyB64, garmentB64, face, masked: scene.masked, endUser, people });
-    costUsd = out.costUsd;
+    const out = await checkedSceneTryon(env, { bodyB64, garmentB64, face, masked: scene.masked, endUser, people, dir });
+    costUsd = seenCost + out.costUsd;
     if (!out.gen) {
       const rejected = {
         id: cached?.id ?? newId('try'),
