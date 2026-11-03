@@ -12,8 +12,9 @@
 // One synchronous call returns the finished image (WebP). $0.01 per generated image; failed or
 // safety-filtered images are not billed. Docs: https://dev.meta.ai/docs/image-generation
 // ============================================================================
+import { PhotonImage, Rgba, crop, padding_bottom, padding_left, padding_right, padding_top } from '@cf-wasm/photon';
 import type { Env } from './env';
-import { imageSize, sleep } from './util';
+import { abToBase64, imageSize, sleep } from './util';
 
 const META_BASE = 'https://api.meta.ai/v1';
 export const META_IMAGE_MODEL = 'muse-image-1.0';
@@ -87,19 +88,116 @@ function sizeLike(dataUri: string): string | undefined {
 }
 
 /**
- * /responses image_generation tool: only these sizes are accepted (any other "WxH" is a 400), so take the one
- * closest to the image's aspect ratio. The page shows the result in the original frame (object-fit: cover).
+ * /responses image_generation tool: only these sizes are accepted (any other "WxH" is a 400). A photo of another
+ * shape is padded to the nearest one with its own edge colour before it is sent, and the result is cropped back
+ * to the photo's shape: campaign text and framing stay where they were. (Sent as is, Muse Image re-laid the photo
+ * out to the new shape and pushed text to the edges, where the page's object-fit: cover then cut it.)
  */
 const TOOL_SIZES = [
   { size: '1024x1024', ratio: 1 },
   { size: '1024x1536', ratio: 2 / 3 },
   { size: '1536x1024', ratio: 3 / 2 },
 ];
-function toolSizeLike(dataUri: string): string | undefined {
+
+/** Where the photo sits inside the padded image (pixels of the padded image). */
+interface PadBox {
+  l: number;
+  t: number;
+  w: number;
+  h: number;
+  W: number;
+  H: number;
+}
+
+/** Mean colour of two thin strips of the image (the backdrop the padding continues). */
+function stripColour(img: PhotonImage, strips: Array<[number, number, number, number]>): [number, number, number] {
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  let n = 0;
+  for (const [x1, y1, x2, y2] of strips) {
+    const s = crop(img, x1, y1, x2, y2);
+    try {
+      const px = s.get_raw_pixels();
+      for (let i = 0; i < px.length; i += 4) {
+        r += px[i];
+        g += px[i + 1];
+        b += px[i + 2];
+        n++;
+      }
+    } finally {
+      s.free();
+    }
+  }
+  return n ? [Math.round(r / n), Math.round(g / n), Math.round(b / n)] : [128, 128, 128];
+}
+
+/** photon takes an Rgba by value (the call consumes it), so every padding call gets its own. */
+const rgba = ([r, g, b]: [number, number, number]) => new Rgba(r, g, b, 255);
+
+/** The photo as the tool must receive it: an accepted size, padded when its shape differs by more than 2%. */
+function fitToToolSize(dataUri: string): { dataUri: string; size?: string; box?: PadBox } {
   const d = dims(dataUri);
-  if (!d) return undefined;
-  const r = Math.log(d.w / d.h);
-  return TOOL_SIZES.reduce((a, b) => (Math.abs(Math.log(b.ratio) - r) < Math.abs(Math.log(a.ratio) - r) ? b : a)).size;
+  if (!d) return { dataUri };
+  const r = d.w / d.h;
+  const t = TOOL_SIZES.reduce((a, b) => (Math.abs(Math.log(b.ratio / r)) < Math.abs(Math.log(a.ratio / r)) ? b : a));
+  if (Math.abs(Math.log(r / t.ratio)) < 0.02) return { dataUri, size: t.size };
+  try {
+    const img = PhotonImage.new_from_byteslice(b64ToBytes(dataUri.slice(dataUri.indexOf(',') + 1)));
+    try {
+      const w = img.get_width();
+      const h = img.get_height();
+      let a: PhotonImage;
+      let b: PhotonImage;
+      let box: PadBox;
+      if (r < t.ratio) {
+        const W = Math.round(h * t.ratio);
+        const left = Math.floor((W - w) / 2);
+        const colour = stripColour(img, [[0, 0, 2, h], [w - 2, 0, w, h]]);
+        a = padding_left(img, left, rgba(colour));
+        b = padding_right(a, W - w - left, rgba(colour));
+        box = { l: left, t: 0, w, h, W, H: h };
+      } else {
+        const H = Math.round(w / t.ratio);
+        const top = Math.floor((H - h) / 2);
+        const colour = stripColour(img, [[0, 0, w, 2], [0, h - 2, w, h]]);
+        a = padding_top(img, top, rgba(colour));
+        b = padding_bottom(a, H - h - top, rgba(colour));
+        box = { l: 0, t: top, w, h, W: w, H };
+      }
+      try {
+        return { dataUri: `data:image/jpeg;base64,${abToBase64(b.get_bytes_jpeg(92).slice().buffer)}`, size: t.size, box };
+      } finally {
+        a.free();
+        b.free();
+      }
+    } finally {
+      img.free();
+    }
+  } catch {
+    return { dataUri, size: t.size }; // unreadable here → sent as is, the page crops it
+  }
+}
+
+/** Cut the padding back off the generated image (JPEG: photon's WebP encoder is lossless and heavy). */
+function cropBack(out: MetaImage, box: PadBox): MetaImage {
+  try {
+    const img = PhotonImage.new_from_byteslice(out.bytes);
+    try {
+      const sx = img.get_width() / box.W;
+      const sy = img.get_height() / box.H;
+      const c = crop(img, Math.round(box.l * sx), Math.round(box.t * sy), Math.round((box.l + box.w) * sx), Math.round((box.t + box.h) * sy));
+      try {
+        return { bytes: c.get_bytes_jpeg(90), contentType: 'image/jpeg', latencyMs: out.latencyMs };
+      } finally {
+        c.free();
+      }
+    } finally {
+      img.free();
+    }
+  } catch {
+    return out;
+  }
 }
 
 /** POST to the Meta Model API and pull the image out. Retries 429 / 5xx / network; other 4xx are fatal. */
@@ -169,6 +267,7 @@ export async function metaSceneTryon(
   maskedSceneDataUri: string,
   endUser: string,
 ): Promise<MetaImage> {
+  const scene = fitToToolSize(maskedSceneDataUri);
   const content: Array<Record<string, string>> = [
     { type: 'input_text', text: SCENE_A },
     { type: 'input_image', image_url: bodyDataUri },
@@ -178,12 +277,11 @@ export async function metaSceneTryon(
   }
   content.push(
     { type: 'input_text', text: SCENE_B },
-    { type: 'input_image', image_url: maskedSceneDataUri },
+    { type: 'input_image', image_url: scene.dataUri },
     { type: 'input_text', text: sceneTask(!!faceDataUri) },
   );
   const tool: Record<string, unknown> = { type: 'image_generation', output_format: 'webp', ...TOOLS_OFF };
-  const size = toolSizeLike(maskedSceneDataUri);
-  if (size) tool.size = size;
+  if (scene.size) tool.size = scene.size;
   const body = {
     model: META_IMAGE_MODEL,
     input: [{ role: 'user', content }],
@@ -191,8 +289,9 @@ export async function metaSceneTryon(
     store: false, // nothing to continue — keep the customer's photos off Meta's response store
     safety_identifier: endUser,
   };
-  return callMeta(env, '/responses', body, (j) => {
+  const out = await callMeta(env, '/responses', body, (j) => {
     const item = (j.output ?? []).find((o: any) => o.type === 'image_generation_call' && o.result);
     return { b64: item?.result, format: 'webp' };
   });
+  return scene.box ? cropBack(out, scene.box) : out;
 }

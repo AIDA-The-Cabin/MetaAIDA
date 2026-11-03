@@ -17,17 +17,6 @@ import { faceCloseup } from './avatar';
 import { storeScene } from './scene';
 import { chargeCredit, getCredits } from './credits';
 import { activeProfile, type ProfileRow } from './profiles';
-import { PhotonImage } from '@cf-wasm/photon';
-
-/** Muse Image is asked for WebP; anything else is converted before it lands in R2. */
-function toWebp(bytes: Uint8Array): Uint8Array {
-  const img = PhotonImage.new_from_byteslice(bytes);
-  try {
-    return img.get_bytes_webp();
-  } finally {
-    img.free();
-  }
-}
 
 export class TryonError extends Error {
   code: string;
@@ -207,9 +196,11 @@ export async function runTryon(
     throw e;
   }
   await chargeCredit(db, ctx.userId); // false only if parallel requests took the last credit meanwhile
-  const webp = gen.contentType.includes('webp') ? gen.bytes : toWebp(gen.bytes);
-  const resultKey = `results/${ctx.tenantId}/${ctx.userId}/${garment.imageHash}/${profile.bodyVersion}-${variant}.webp`;
-  await env.BUCKET.put(resultKey, webp, { httpMetadata: { contentType: 'image/webp' } });
+  // WebP straight from Muse Image, or JPEG when the photo was padded to an accepted shape and cropped back.
+  const ext = gen.contentType.includes('jpeg') ? 'jpg' : 'webp';
+  const resultKey = `results/${ctx.tenantId}/${ctx.userId}/${garment.imageHash}/${profile.bodyVersion}-${variant}.${ext}`;
+  await env.BUCKET.put(resultKey, gen.bytes, { httpMetadata: { contentType: gen.contentType } });
+  if (cached?.resultR2Key && cached.resultR2Key !== resultKey) await env.BUCKET.delete(cached.resultR2Key);
 
   const id = cached?.id ?? newId('try');
   const rec = {
